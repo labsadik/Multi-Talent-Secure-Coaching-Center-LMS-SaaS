@@ -182,6 +182,115 @@ fn course_response(document: Document) -> AppResult<CourseResponse> {
 }
 
 
+
+pub async fn update_course(
+    State(state): State<AppState>,
+    Path(course_id): Path<String>,
+    auth: AuthUser,
+    Json(input): Json<CreateCourseRequest>,
+) -> AppResult<Json<CourseResponse>> {
+    if !auth.can_manage_content() {
+        return Err(AppError::Forbidden);
+    }
+    let course_id = ObjectId::parse_str(&course_id)
+        .map_err(|_| AppError::BadRequest("invalid course ID"))?;
+    let title = input.title.trim().to_owned();
+    let slug = input.slug.trim().to_ascii_lowercase();
+    let description = input.description.map(|value| value.trim().to_owned());
+    let price_in_paise = input.price_in_paise.unwrap_or(0);
+    if !(3..=140).contains(&title.chars().count())
+        || !valid_slug(&slug)
+        || !(0..=100_000_000).contains(&price_in_paise)
+        || description.as_ref().is_some_and(|value| value.chars().count() > 10_000)
+    {
+        return Err(AppError::BadRequest(
+            "title, slug, description, or price does not meet validation rules",
+        ));
+    }
+
+    let courses = state.db.collection::<Document>("courses");
+    let filter = doc! {
+        "_id": course_id.clone(),
+        "companyId": auth.company_id.clone(),
+        "deletedAt": { "$exists": false },
+    };
+    if courses.find_one(filter.clone()).await?.is_none() {
+        return Err(AppError::NotFound);
+    }
+    if courses.find_one(doc! {
+        "companyId": auth.company_id.clone(),
+        "slug": &slug,
+        "_id": { "$ne": course_id.clone() },
+        "deletedAt": { "$exists": false },
+    }).await?.is_some() {
+        return Err(AppError::Conflict("course slug is already in use for this company"));
+    }
+
+    courses.update_one(
+        filter.clone(),
+        doc! { "$set": {
+            "title": &title,
+            "slug": &slug,
+            "description": description.clone(),
+            "priceInPaise": price_in_paise,
+            "updatedAt": DateTime::now(),
+        } },
+    ).await.map_err(AppError::from_mongo)?;
+    let document = courses.find_one(filter).await?.ok_or(AppError::NotFound)?;
+    Ok(Json(course_response(document)?))
+}
+
+pub async fn delete_course(
+    State(state): State<AppState>,
+    Path(course_id): Path<String>,
+    auth: AuthUser,
+) -> AppResult<Json<CourseResponse>> {
+    if !auth.can_manage_content() {
+        return Err(AppError::Forbidden);
+    }
+    let course_id = ObjectId::parse_str(&course_id)
+        .map_err(|_| AppError::BadRequest("invalid course ID"))?;
+    let courses = state.db.collection::<Document>("courses");
+    let filter = doc! {
+        "_id": course_id.clone(),
+        "companyId": auth.company_id.clone(),
+        "deletedAt": { "$exists": false },
+    };
+    let now = DateTime::now();
+    let result = courses.update_one(
+        filter,
+        doc! { "$set": {
+            "status": "archived",
+            "deletedAt": now,
+            "updatedAt": now,
+        } },
+    ).await?;
+    if result.matched_count != 1 {
+        return Err(AppError::NotFound);
+    }
+
+    // Keep enrolment and payment history while hiding the archived course hierarchy.
+    for collection in ["subjects", "topics", "lessons", "assets"] {
+        state.db.collection::<Document>(collection).update_many(
+            doc! {
+                "companyId": auth.company_id.clone(),
+                "courseId": course_id.clone(),
+                "deletedAt": { "$exists": false },
+            },
+            doc! { "$set": {
+                "status": "archived",
+                "deletedAt": now,
+                "updatedAt": now,
+            } },
+        ).await?;
+    }
+    let document = courses.find_one(doc! {
+        "_id": course_id,
+        "companyId": auth.company_id.clone(),
+    }).await?.ok_or(AppError::NotFound)?;
+    Ok(Json(course_response(document)?))
+}
+
 pub async fn publish_course(
     State(state): State<AppState>,
     Path(course_id): Path<String>,
