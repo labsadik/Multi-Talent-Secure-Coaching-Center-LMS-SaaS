@@ -205,7 +205,6 @@ impl Settings {
             "BUNNY_STREAM_LIBRARY_ID and BUNNY_STREAM_API_KEY must be configured together"
         );
         let bunny_stream_api_key = optional("BUNNY_STREAM_API_KEY");
-        let bunny_stream_webhook_signing_key = optional("BUNNY_STREAM_WEBHOOK_SIGNING_KEY");
         let bunny_tus_endpoint = optional("BUNNY_TUS_ENDPOINT")
             .unwrap_or_else(|| "https://video.bunnycdn.com/tusupload".to_owned());
         ensure!(
@@ -220,6 +219,7 @@ impl Settings {
             "BUNNY_UPLOAD_SIGNATURE_TTL_SECONDS must be between 3600 and 86400"
         );
         let bunny_stream_token_auth_key = optional("BUNNY_STREAM_TOKEN_AUTH_KEY");
+        let bunny_stream_webhook_signing_key = optional("BUNNY_STREAM_WEBHOOK_SIGNING_KEY");
         let bunny_playback_token_ttl_seconds =
             parse_or("BUNNY_PLAYBACK_TOKEN_TTL_SECONDS", 3_600_u64)?;
         ensure!(
@@ -230,6 +230,10 @@ impl Settings {
             ensure!(
                 bunny_stream_token_auth_key.is_some(),
                 "BUNNY_STREAM_TOKEN_AUTH_KEY is required in production when Bunny Stream is enabled"
+            );
+            ensure!(
+                bunny_stream_webhook_signing_key.is_some(),
+                "BUNNY_STREAM_WEBHOOK_SIGNING_KEY is required in production when Bunny Stream is enabled"
             );
         }
 
