@@ -513,6 +513,9 @@ pub async fn create_lesson(
                 return Err(AppError::BadRequest("media asset was uploaded for a different chapter part"));
             }
         }
+        if asset.get_object_id("lessonId").is_ok() {
+            return Err(AppError::BadRequest("this asset is already attached to a lesson; upload a separate asset for each lesson"));
+        }
         asset_for_lesson = Some(asset);
     }
 
@@ -520,17 +523,17 @@ pub async fn create_lesson(
     let document = doc! {
         "_id": lesson_id.clone(),
         "companyId": auth.company_id.clone(),
-        "courseId": course_id,
-        "subjectId": subject_id,
-        "topicId": topic_id,
-        "chapterId": chapter_id,
-        "chapterPartId": chapter_part_id,
+        "courseId": course_id.clone(),
+        "subjectId": subject_id.clone(),
+        "topicId": topic_id.clone(),
+        "chapterId": chapter_id.clone(),
+        "chapterPartId": chapter_part_id.clone(),
         "thumbnailUrl": thumbnail_url,
-        "title": title,
-        "slug": slug,
+        "title": title.clone(),
+        "slug": slug.clone(),
         "lessonType": lesson_type,
         "content": content,
-        "mediaAssetId": media_asset_id,
+        "mediaAssetId": media_asset_id.clone(),
         "durationSeconds": duration_seconds,
         "isPreview": input.is_preview.unwrap_or(false),
         "status": "active",
@@ -589,9 +592,11 @@ pub async fn create_lesson(
             }
             "bunny_stream" => {
                 let collection_name = format!(
-                    "c-{}-cr-{}-p-{}-l-{}",
+                    "c{}-r{}-s{}-h{}-p{}-l{}",
                     auth.company_id.to_hex(),
                     course_id.to_hex(),
+                    subject_id.to_hex(),
+                    chapter_id_hex,
                     chapter_part_id_hex,
                     lesson_id_hex,
                 );
