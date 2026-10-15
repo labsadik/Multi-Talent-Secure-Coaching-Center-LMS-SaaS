@@ -8,7 +8,7 @@ use crate::{
     auth::valid_slug,
     error::{AppError, AppResult},
     state::AppState,
-    tenant::{limits_for_plan, require_active_company},
+    tenant::require_active_company,
 };
 
 #[derive(Debug, Deserialize)]
@@ -81,22 +81,7 @@ pub async fn create_course(
     if !auth.can_manage_content() {
         return Err(AppError::Forbidden);
     }
-    let company = require_active_company(&state.db, &auth.company_id).await?;
-    let limits = limits_for_plan(
-        &state.settings,
-        company.get_str("planCode").unwrap_or("free"),
-    )?;
-    let existing_courses = state
-        .db
-        .collection::<Document>("courses")
-        .count_documents(doc! {
-            "companyId": auth.company_id.clone(),
-            "deletedAt": { "$exists": false },
-        })
-        .await?;
-    if existing_courses >= limits.max_courses {
-        return Err(AppError::Conflict("course limit reached for the current plan"));
-    }
+    require_active_company(&state.db, &auth.company_id).await?;
     let title = input.title.trim().to_owned();
     let slug = input.slug.trim().to_ascii_lowercase();
     let description = input.description.map(|value| value.trim().to_owned());
