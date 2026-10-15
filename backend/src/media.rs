@@ -504,6 +504,81 @@ pub async fn upload_topic_file(
     ))
 }
 
+/// Deletes a tenant-scoped Bunny asset and its database record. Callers must ensure
+/// that the asset is not still attached to a different live lesson.
+pub async fn permanently_delete_asset_record(
+    state: &AppState,
+    company_id: &mongodb::bson::oid::ObjectId,
+    asset_id: &mongodb::bson::oid::ObjectId,
+) -> AppResult<()> {
+    let assets = state.db.collection::<Document>("assets");
+    let filter = doc! { "_id": asset_id.clone(), "companyId": company_id.clone() };
+    let asset = assets.find_one(filter.clone()).await?.ok_or(AppError::NotFound)?;
+
+    match asset.get_str("provider").unwrap_or_default() {
+        "bunny_storage" => {
+            let path = asset.get_str("storagePath").map(str::to_owned).map_err(|_| AppError::Internal)?;
+            let storage = BunnyStorage::from_settings(&state.settings, state.http.clone())?;
+            storage.delete_object(&path).await?;
+        }
+        "bunny_stream" => {
+            let expected_library = state.settings.bunny_stream_library_id
+                .ok_or(AppError::ServiceUnavailable("Bunny Stream"))?;
+            if asset.get_i64("bunnyLibraryId").ok() != i64::try_from(expected_library).ok() {
+                return Err(AppError::Forbidden);
+            }
+            let video_id = asset.get_str("providerVideoId").map(str::to_owned).map_err(|_| AppError::Internal)?;
+            let stream = BunnyStream::from_settings(&state.settings, state.http.clone())?;
+            stream.delete_video(&video_id).await?;
+        }
+        _ => {}
+    }
+
+    assets.delete_one(filter).await.map_err(AppError::from_mongo)?;
+    Ok(())
+}
+
+pub async fn archive_asset(
+    State(state): State<AppState>,
+    Path(asset_id): Path<String>,
+    auth: AuthUser,
+) -> AppResult<StatusCode> {
+    if !auth.can_manage_content() { return Err(AppError::Forbidden); }
+    let asset_id = parse_path_id(&asset_id)?;
+    let filter = doc! {
+        "_id": asset_id.clone(),
+        "companyId": auth.company_id.clone(),
+        "deletedAt": { "$exists": false },
+    };
+    let asset = state.db.collection::<Document>("assets")
+        .find_one(filter.clone()).await?.ok_or(AppError::NotFound)?;
+    if asset.get_object_id("lessonId").is_ok() {
+        return Err(AppError::Conflict("asset is attached to a lesson; edit the lesson to replace its media"));
+    }
+    state.db.collection::<Document>("assets").update_one(
+        filter,
+        doc! { "$set": { "status": "archived", "deletedAt": DateTime::now(), "updatedAt": DateTime::now() } },
+    ).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn permanently_delete_asset(
+    State(state): State<AppState>,
+    Path(asset_id): Path<String>,
+    auth: AuthUser,
+) -> AppResult<StatusCode> {
+    if !auth.can_manage_content() { return Err(AppError::Forbidden); }
+    let asset_id = parse_path_id(&asset_id)?;
+    let asset = state.db.collection::<Document>("assets").find_one(doc! {
+        "_id": asset_id.clone(), "companyId": auth.company_id.clone(),
+    }).await?.ok_or(AppError::NotFound)?;
+    if asset.get_object_id("lessonId").is_ok() {
+        return Err(AppError::Conflict("asset is attached to a lesson; delete the lesson or replace its media first"));
+    }
+    permanently_delete_asset_record(&state, &auth.company_id, &asset_id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub async fn refresh_video_status(
     State(state): State<AppState>,
     Path(asset_id): Path<String>,
