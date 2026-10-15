@@ -16,7 +16,10 @@ pub struct Settings {
     pub jwt_ttl_seconds: u64,
     pub cors_allowed_origins: Vec<String>,
     pub max_request_body_bytes: usize,
+    pub max_asset_upload_bytes: usize,
     pub http_client_timeout_seconds: u64,
+    pub bunny_tus_endpoint: String,
+    pub bunny_upload_signature_ttl_seconds: u64,
     pub app_encryption_key: Option<[u8; 32]>,
     pub bunny_storage_zone: Option<String>,
     pub bunny_storage_api_key: Option<String>,
@@ -112,10 +115,16 @@ impl Settings {
             );
         }
 
-        let max_request_body_bytes = parse_or("MAX_REQUEST_BODY_BYTES", 1_048_576_usize)?;
+        let max_request_body_bytes = parse_or("MAX_REQUEST_BODY_BYTES", 26_214_400_usize)?;
         ensure!(
-            (1_024..=10 * 1_024 * 1_024).contains(&max_request_body_bytes),
-            "MAX_REQUEST_BODY_BYTES must be between 1024 and 10485760"
+            (1_024..=50 * 1_024 * 1_024).contains(&max_request_body_bytes),
+            "MAX_REQUEST_BODY_BYTES must be between 1024 and 52428800"
+        );
+        let max_asset_upload_bytes = parse_or("MAX_ASSET_UPLOAD_BYTES", 20 * 1_024 * 1_024_usize)?;
+        ensure!(
+            (1_024..=50 * 1_024 * 1_024).contains(&max_asset_upload_bytes)
+                && max_asset_upload_bytes <= max_request_body_bytes,
+            "MAX_ASSET_UPLOAD_BYTES must be between 1024 and MAX_REQUEST_BODY_BYTES"
         );
         let http_client_timeout_seconds = parse_or("HTTP_CLIENT_TIMEOUT_SECONDS", 15_u64)?;
         ensure!(
@@ -180,6 +189,19 @@ impl Settings {
             "BUNNY_STREAM_LIBRARY_ID and BUNNY_STREAM_API_KEY must be configured together"
         );
         let bunny_stream_api_key = optional("BUNNY_STREAM_API_KEY");
+        let bunny_tus_endpoint = optional("BUNNY_TUS_ENDPOINT")
+            .unwrap_or_else(|| "https://video.bunnycdn.com/tusupload".to_owned());
+        ensure!(
+            bunny_tus_endpoint.starts_with("https://")
+                && !bunny_tus_endpoint.chars().any(char::is_whitespace),
+            "BUNNY_TUS_ENDPOINT must be an HTTPS endpoint"
+        );
+        let bunny_upload_signature_ttl_seconds =
+            parse_or("BUNNY_UPLOAD_SIGNATURE_TTL_SECONDS", 21_600_u64)?;
+        ensure!(
+            (3_600..=86_400).contains(&bunny_upload_signature_ttl_seconds),
+            "BUNNY_UPLOAD_SIGNATURE_TTL_SECONDS must be between 3600 and 86400"
+        );
 
         let razorpay_key_id = optional("RAZORPAY_KEY_ID");
         let razorpay_key_secret = optional("RAZORPAY_KEY_SECRET");
@@ -208,7 +230,10 @@ impl Settings {
             jwt_ttl_seconds,
             cors_allowed_origins,
             max_request_body_bytes,
+            max_asset_upload_bytes,
             http_client_timeout_seconds,
+            bunny_tus_endpoint,
+            bunny_upload_signature_ttl_seconds,
             app_encryption_key,
             bunny_storage_zone,
             bunny_storage_api_key,

@@ -1,6 +1,6 @@
 use axum::{
     http::StatusCode,
-    routing::{get, post},
+    routing::{get, post, put},
     Json, Router,
 };
 use serde_json::{json, Value};
@@ -34,6 +34,18 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/v1/topics/{topic_id}/lessons",
             get(learning::list_lessons).post(learning::create_lesson),
+        )
+        .route(
+            "/api/v1/topics/{topic_id}/video-upload-ticket",
+            post(media::create_video_ticket),
+        )
+        .route(
+            "/api/v1/topics/{topic_id}/assets",
+            put(media::upload_topic_file),
+        )
+        .route(
+            "/api/v1/assets/{asset_id}/refresh-status",
+            post(media::refresh_video_status),
         )
         .fallback(not_found)
         .with_state(state)

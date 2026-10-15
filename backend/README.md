@@ -10,7 +10,7 @@ This is the Rust backend foundation for the multi-tenant Newage LMS SaaS. The Nu
 - Company registration, password hashing with Argon2, tenant-scoped login, short-lived JWT access tokens with issuer/audience validation, and /auth/me.
 - Tenant-aware course creation/listing and course publishing. Learners only discover published courses; all course queries are filtered by the authenticated user's company ID.
 - Subject → Topic → Lesson APIs with tenant-scoped parent checks, content validation, ordering, and media-asset ownership checks for video/file lessons.
-- Bunny Storage path validation/server-side upload helper, Bunny Stream shared-library video creation helper, Razorpay platform order helper, and AES-256-GCM utility for encrypting tenant secrets with company ID as associated data.
+- Bunny Storage topic-scoped image/PDF uploads, Bunny Stream per-course collection provisioning and time-limited TUS upload tickets, video encoding status sync, Razorpay platform order helper, and AES-256-GCM utility for tenant secrets.
 - CI checks for formatting, Clippy, tests, and compilation.
 
 This is a working foundation, not yet a complete production LMS. The next backend slices should add subjects/topics/lessons CRUD, Bunny collection provisioning and upload orchestration, signed playback access, student enrollment/progress, Razorpay webhook verification/idempotency, plan enforcement, super-admin operations, email verification/password reset, audit logging, and distributed rate limiting.
@@ -29,6 +29,8 @@ The API listener defaults to 127.0.0.1:8080. Set HOST=0.0.0.0 only in a containe
 All runtime configuration is read from environment variables; a local .env is loaded for development. See .env.example for supported settings.
 
 Required: APP_ENV, MONGODB_URI, MONGODB_DATABASE, JWT_SECRET, JWT_ISSUER, JWT_AUDIENCE, and CORS_ALLOWED_ORIGINS.
+
+Optional upload settings: `MAX_ASSET_UPLOAD_BYTES`, `BUNNY_TUS_ENDPOINT`, and `BUNNY_UPLOAD_SIGNATURE_TTL_SECONDS`. Direct browser video uploads use a short-lived TUS signature; the Bunny API key never leaves the server. Storage file uploads are streamed through the API and bounded by both request and asset size caps.
 
 Optional provider configuration must be supplied in matching pairs:
 - Bunny Storage: BUNNY_STORAGE_ZONE + BUNNY_STORAGE_API_KEY
