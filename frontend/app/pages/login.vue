@@ -5,7 +5,6 @@ definePageMeta({ layout: 'auth', middleware: 'guest' })
 
 const route = useRoute()
 const { login } = useAuth()
-const route = useRoute()
 const companySlug = ref('')
 const email = ref('')
 const password = ref('')
