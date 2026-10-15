@@ -4,6 +4,11 @@ Multi-tenant learning management platform with a Rust API and a Nuxt.js web fron
 
 ## Quick start on Windows / VS Code
 
+The current LMS implementation lives on `backend/rust-foundation`; the repository's default `main` branch has not received this feature branch yet. For a fresh checkout, explicitly clone the feature branch:
+
+    git clone --branch backend/rust-foundation https://github.com/WorkRCS/newage.git
+    cd newage
+
 Install Node.js 22.12+, the stable Rust toolchain, and Docker Desktop. From VS Code's PowerShell terminal at the repository root, run:
 
     .\\scripts\\dev.ps1
