@@ -159,6 +159,36 @@ http 200 "$BASE_URL/api/v1/topics/$topic_id" -X PATCH -H "Authorization: Bearer 
 cp "$TMP_DIR/body" "$TMP_DIR/topic-edited.json"
 assert_json "$TMP_DIR/topic-edited.json" '.title == "Edited Smoke Topic" and .sortOrder == 2' "topic edit did not persist"
 
+# Build and verify the planned Subject -> Part -> Chapter -> Chapter part -> lesson hierarchy.
+payload="$(jq -n --arg slug "smoke-chapter-$suffix" '{title:"Smoke Chapter",slug:$slug,description:"Chapter test",sortOrder:0}')"
+http 201 "$BASE_URL/api/v1/topics/$topic_id/chapters" -H "Authorization: Bearer $token_a" -H 'Content-Type: application/json' --data "$payload"
+cp "$TMP_DIR/body" "$TMP_DIR/chapter.json"
+chapter_id="$(jq -er '.id | select(type == "string" and length > 0)' "$TMP_DIR/chapter.json")"
+payload="$(jq -n --arg slug "smoke-chapter-edited-$suffix" '{title:"Edited Smoke Chapter",slug:$slug,description:"Updated chapter",sortOrder:1}')"
+http 200 "$BASE_URL/api/v1/chapters/$chapter_id" -X PATCH -H "Authorization: Bearer $token_a" -H 'Content-Type: application/json' --data "$payload"
+cp "$TMP_DIR/body" "$TMP_DIR/chapter-edited.json"
+assert_json "$TMP_DIR/chapter-edited.json" '.title == "Edited Smoke Chapter" and .sortOrder == 1' "chapter edit did not persist"
+
+payload="$(jq -n --arg slug "smoke-chapter-part-$suffix" '{title:"Smoke Chapter Part",slug:$slug,description:"Nested chapter section",sortOrder:0}')"
+http 201 "$BASE_URL/api/v1/chapters/$chapter_id/parts" -H "Authorization: Bearer $token_a" -H 'Content-Type: application/json' --data "$payload"
+cp "$TMP_DIR/body" "$TMP_DIR/chapter-part.json"
+chapter_part_id="$(jq -er '.id | select(type == "string" and length > 0)' "$TMP_DIR/chapter-part.json")"
+payload="$(jq -n --arg slug "smoke-chapter-part-edited-$suffix" '{title:"Edited Chapter Part",slug:$slug,description:"Updated nested section",sortOrder:2}')"
+http 200 "$BASE_URL/api/v1/chapter-parts/$chapter_part_id" -X PATCH -H "Authorization: Bearer $token_a" -H 'Content-Type: application/json' --data "$payload"
+cp "$TMP_DIR/body" "$TMP_DIR/chapter-part-edited.json"
+assert_json "$TMP_DIR/chapter-part-edited.json" '.title == "Edited Chapter Part" and .sortOrder == 2' "chapter part edit did not persist"
+
+payload="$(jq -n --arg slug "smoke-nested-lesson-$suffix" '{title:"Nested Smoke Lesson",slug:$slug,lessonType:"text",content:"Lesson inside a chapter part",durationSeconds:45,isPreview:true,sortOrder:0}')"
+http 201 "$BASE_URL/api/v1/chapter-parts/$chapter_part_id/lessons" -H "Authorization: Bearer $token_a" -H 'Content-Type: application/json' --data "$payload"
+cp "$TMP_DIR/body" "$TMP_DIR/nested-lesson.json"
+nested_lesson_id="$(jq -er '.id | select(type == "string" and length > 0)' "$TMP_DIR/nested-lesson.json")"
+assert_json "$TMP_DIR/nested-lesson.json" --arg chapter "$chapter_id" --arg part "$chapter_part_id" '.chapterId == $chapter and .chapterPartId == $part and .lessonType == "text"' "nested lesson did not retain its chapter hierarchy"
+http 200 "$BASE_URL/api/v1/chapter-parts/$chapter_part_id/lessons" -H "Authorization: Bearer $token_a"
+assert_json "$TMP_DIR/body" --arg id "$nested_lesson_id" 'length == 1 and .[0].id == $id' "nested chapter-part lessons were not listed"
+http 204 "$BASE_URL/api/v1/chapter-parts/$chapter_part_id" -X DELETE -H "Authorization: Bearer $token_a"
+http 200 "$BASE_URL/api/v1/topics/$topic_id/lessons" -H "Authorization: Bearer $token_a"
+assert_json "$TMP_DIR/body" 'length == 0' "archived chapter-part lesson is still listed"
+
 payload="$(jq -n --arg slug "smoke-lesson-$suffix" '{title:"Smoke Lesson",slug:$slug,lessonType:"text",content:"Original lesson body",durationSeconds:60,isPreview:true,sortOrder:0}')"
 http 201 "$BASE_URL/api/v1/topics/$topic_id/lessons" -H "Authorization: Bearer $token_a" -H 'Content-Type: application/json' --data "$payload"
 cp "$TMP_DIR/body" "$TMP_DIR/lesson.json"
@@ -182,6 +212,16 @@ http 200 "$BASE_URL/api/v1/courses" -H "Authorization: Bearer $token_a"
 if jq -e --arg id "$course_id" 'any(.[]; .id == $id)' "$TMP_DIR/body" >/dev/null; then
   fail "archived course still appears in the course listing"
 fi
+
+# A company owner can brand/publish a tenant-scoped storefront with its published course catalogue.
+payload="$(jq -n --arg display "Smoke Test Public Academy" --arg headline "Learn with Smoke Academy" --arg email "contact-$suffix@example.test" '{displayName:$display,headline:$headline,tagline:"Learn at your pace",about:"Public company page smoke test",theme:"ocean",brandColor:"#2563eb",accentColor:"#14b8a6",logoUrl:null,heroImageUrl:null,contactEmail:$email,isPublished:true}')"
+http 200 "$BASE_URL/api/v1/company/site" -X PUT -H "Authorization: Bearer $token_a" -H 'Content-Type: application/json' --data "$payload"
+cp "$TMP_DIR/body" "$TMP_DIR/site-saved.json"
+assert_json "$TMP_DIR/site-saved.json" '.site.isPublished == true and .site.displayName == "Smoke Test Public Academy" and .publicPath == ("/p/" + "'"$slug_a"'")' "company public site configuration did not persist"
+http 200 "$BASE_URL/api/v1/public/companies/$slug_a"
+cp "$TMP_DIR/body" "$TMP_DIR/public-company.json"
+assert_json "$TMP_DIR/public-company.json" '.site.isPublished == true and .company.slug == "'"$slug_a"'" and any(.courses[]; .id == "'"$course_id"'")' "public company page did not return the published course"
+http 404 "$BASE_URL/api/v1/public/companies/unknown-company-$suffix"
 
 payload="$(jq -n --arg slug "$slug_a" --arg email "$learner_email" --arg password "$password" '{companySlug:$slug,name:"Smoke Test Learner",email:$email,password:$password}')"
 http 201 "$BASE_URL/api/v1/auth/register-learner" -H 'Content-Type: application/json' --data "$payload"
