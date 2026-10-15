@@ -625,10 +625,10 @@ pub async fn create_lesson(
             "updatedAt": DateTime::now(),
         };
         if let Some((_, target_path)) = pending_storage_move.as_ref() {
-            set_fields.insert("storagePath", target_path);
+            set_fields.insert("storagePath", target_path.clone());
         }
         if let Some(collection_id) = lesson_stream_collection.as_ref() {
-            set_fields.insert("bunnyCollectionId", collection_id);
+            set_fields.insert("bunnyCollectionId", collection_id.clone());
         }
 
         if let Some(collection_id) = lesson_stream_collection.as_ref() {
