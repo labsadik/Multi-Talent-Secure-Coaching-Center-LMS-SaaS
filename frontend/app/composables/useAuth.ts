@@ -48,6 +48,10 @@ export function useAuth() {
   function backend<T>(path: string, options: Record<string, unknown> = {}) {
     return api<T>('/api/backend/' + path.replace(/^\/+/, ''), options as Parameters<typeof api<T>>[1])
   }
+  async function getCompanySite() { return backend<import('~/types/api').CompanySiteReply>('company/site') }
+  async function updateCompanySite(input: import('~/types/api').SiteSettings) {
+    return backend<import('~/types/api').CompanySiteReply>('company/site', { method: 'PUT', body: input })
+  }
   async function getCourses() { return backend<Course[]>('courses') }
   async function createCourse(input: CreateCourseInput) { return backend<Course>('courses', { method: 'POST', body: input }) }
   async function updateCourse(courseId: string, input: CreateCourseInput) {
@@ -144,6 +148,7 @@ export function useAuth() {
   }
   return {
     currentUser, currentCompany, login, register, registerLearner, loadCurrentUser,
+    getCompanySite, updateCompanySite,
     getCourses, createCourse, updateCourse, deleteCourse, publishCourse,
     getSubjects, createSubject, updateSubject, deleteSubject,
     getTopics, createTopic, updateTopic, deleteTopic,
