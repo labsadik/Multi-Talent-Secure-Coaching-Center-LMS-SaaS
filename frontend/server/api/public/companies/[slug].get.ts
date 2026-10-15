@@ -4,6 +4,6 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Company page not found' })
   }
   const config = useRuntimeConfig(event)
-  const baseURL = String(config.apiInternalBase || 'http://127.0.0.1:8080').replace(/\\/+$/, '')
+  const baseURL = String(config.apiInternalBase || 'http://127.0.0.1:8080').replace(/\/+$/, '')
   return await $fetch('/api/v1/public/companies/' + encodeURIComponent(slug), { baseURL })
 })
