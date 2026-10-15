@@ -5,7 +5,7 @@ use axum::{
 };
 use serde_json::{json, Value};
 
-use crate::{auth, courses, health, learning, state::AppState};
+use crate::{auth, courses, health, learning, media, state::AppState};
 
 pub fn router(state: AppState) -> Router {
     Router::new()
