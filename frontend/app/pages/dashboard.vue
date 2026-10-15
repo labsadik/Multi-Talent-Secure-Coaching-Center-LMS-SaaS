@@ -5,13 +5,13 @@ import { apiErrorMessage } from '~/utils/api-error'
 definePageMeta({ middleware: 'auth' })
 
 const {
-  accessToken,
   currentUser,
   currentCompany,
   loadCurrentUser,
   getCourses,
   createCourse,
   publishCourse,
+  logout,
   clearSession,
 } = useAuth()
 
@@ -64,7 +64,7 @@ async function loadDashboard() {
     courses.value = await getCourses()
   } catch (error) {
     const statusCode = (error as { statusCode?: number } | null)?.statusCode
-    if (!accessToken.value || statusCode === 401) {
+    if (statusCode === 401) {
       clearSession()
       await navigateTo('/login')
       return
@@ -115,7 +115,7 @@ async function publish(course: Course) {
 }
 
 async function signOut() {
-  clearSession()
+  await logout()
   await navigateTo('/login')
 }
 
@@ -150,6 +150,12 @@ onMounted(() => {
           <button type="button" class="rounded-xl border border-line px-3 py-2.5 text-xs font-semibold text-muted transition hover:border-red-200 hover:bg-red-50 hover:text-red-700" @click="signOut">Sign out</button>
         </div>
       </div>
+      <nav class="mx-auto flex max-w-7xl items-center gap-1 overflow-x-auto px-4 pb-3 sm:px-6 lg:px-8" aria-label="Workspace sections">
+        <NuxtLink to="/dashboard" class="shrink-0 rounded-lg bg-brand-soft px-3 py-2 text-xs font-semibold text-brand">Overview</NuxtLink>
+        <NuxtLink v-if="currentUser?.role === 'learner'" to="/dashboard/learn" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-muted hover:bg-canvas hover:text-ink">My learning</NuxtLink>
+        <NuxtLink v-if="['owner','admin'].includes(currentUser?.role || '')" to="/dashboard/users" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-muted hover:bg-canvas hover:text-ink">People</NuxtLink>
+        <NuxtLink v-if="['owner','admin'].includes(currentUser?.role || '')" to="/dashboard/settings" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-muted hover:bg-canvas hover:text-ink">Payments & plans</NuxtLink>
+      </nav>
     </header>
 
     <main class="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
@@ -242,7 +248,7 @@ onMounted(() => {
               <span class="absolute bottom-4 right-4 rounded-full px-2.5 py-1 text-[10px] font-semibold capitalize" :class="course.status === 'published' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'">{{ course.status }}</span>
             </div>
             <div class="flex flex-1 flex-col p-5">
-              <h3 class="line-clamp-2 text-base font-semibold leading-6">{{ course.title }}</h3>
+              <NuxtLink :to="'/dashboard/courses/' + course.id" class="line-clamp-2 text-base font-semibold leading-6 transition hover:text-brand">{{ course.title }}</NuxtLink>
               <p class="mt-2 line-clamp-2 min-h-10 text-sm leading-5 text-muted">{{ course.description || 'A new learning experience, ready to take shape.' }}</p>
               <div class="mt-5 flex items-center justify-between gap-3 border-t border-line pt-4">
                 <span class="text-sm font-semibold">{{ formatPrice(course.priceInPaise, course.currency) }}</span>

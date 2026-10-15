@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { apiErrorMessage } from '~/utils/api-error'
 
-definePageMeta({ layout: 'auth' })
+definePageMeta({ layout: 'auth', middleware: 'guest' })
 
 const route = useRoute()
 const { login } = useAuth()
@@ -10,6 +10,12 @@ const email = ref('')
 const password = ref('')
 const pending = ref(false)
 const errorMessage = ref('')
+
+function loginResponsePath() {
+  if (useAuth().currentUser.value?.role === 'learner') return '/dashboard/learn'
+  const requested = typeof route.query.redirect === 'string' ? route.query.redirect : '/dashboard'
+  return requested.startsWith('/') && !requested.startsWith('//') ? requested : '/dashboard'
+}
 
 async function submitLogin() {
   pending.value = true
@@ -22,9 +28,7 @@ async function submitLogin() {
       password: password.value,
     })
 
-    const requestedPath = typeof route.query.redirect === 'string' ? route.query.redirect : '/dashboard'
-    const safePath = requestedPath.startsWith('/') && !requestedPath.startsWith('//') ? requestedPath : '/dashboard'
-    await navigateTo(safePath)
+    await navigateTo(loginResponsePath())
   } catch (error) {
     errorMessage.value = apiErrorMessage(error, 'We could not sign you in. Check your details and try again.')
   } finally {
@@ -64,6 +68,7 @@ async function submitLogin() {
     </form>
 
     <p class="mt-7 text-center text-sm text-muted">New to Newage? <NuxtLink to="/register" class="font-semibold text-brand hover:text-brand-dark">Create a workspace</NuxtLink></p>
+    <p class="mt-3 text-center text-sm text-muted">Joining a workspace to learn? <NuxtLink to="/learn/register" class="font-semibold text-brand hover:text-brand-dark">Create a learner account</NuxtLink></p>
     <p class="mt-8 text-center text-xs leading-5 text-muted">Your access is checked by the API on each authenticated request.</p>
   </div>
 </template>

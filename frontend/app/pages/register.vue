@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { apiErrorMessage } from '~/utils/api-error'
 
-definePageMeta({ layout: 'auth' })
+definePageMeta({ layout: 'auth', middleware: 'guest' })
 
 const { register } = useAuth()
 const companyName = ref('')
@@ -84,6 +84,7 @@ async function submitRegister() {
     </form>
 
     <p class="mt-6 text-center text-sm text-muted">Already have a workspace? <NuxtLink to="/login" class="font-semibold text-brand hover:text-brand-dark">Sign in</NuxtLink></p>
+    <p class="mt-3 text-center text-sm text-muted">Here to learn? <NuxtLink to="/learn/register" class="font-semibold text-brand hover:text-brand-dark">Create a learner account</NuxtLink></p>
     <p class="mt-5 text-center text-xs leading-5 text-muted">Creating a workspace makes you its owner. Registration requires the backend to be running.</p>
   </div>
 </template>
