@@ -203,9 +203,9 @@ onMounted(() => {
       <nav class="mx-auto flex max-w-7xl items-center gap-1 overflow-x-auto px-4 pb-3 sm:px-6 lg:px-8" aria-label="Workspace sections">
         <NuxtLink  :to="workspacePath()" class="shrink-0 rounded-lg bg-brand-soft px-3 py-2 text-xs font-semibold text-brand">Overview</NuxtLink>
         <NuxtLink v-if="currentUser?.role === 'learner'"  :to="workspacePath('/learn')" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-muted hover:bg-canvas hover:text-ink">My learning</NuxtLink>
-        <NuxtLink v-if="['owner','admin'].includes(currentUser?.role || '')" to="/dashboard/users" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-muted hover:bg-canvas hover:text-ink">People</NuxtLink>
-        <NuxtLink v-if="['owner','admin'].includes(currentUser?.role || '')" to="/dashboard/site" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-muted hover:bg-canvas hover:text-ink">Public site & theme</NuxtLink>
-        <NuxtLink v-if="['owner','admin'].includes(currentUser?.role || '')" to="/dashboard/settings" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-muted hover:bg-canvas hover:text-ink">Payments & plans</NuxtLink>
+        <NuxtLink v-if="['owner','admin'].includes(currentUser?.role || '')" :to="workspacePath('/users')" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-muted hover:bg-canvas hover:text-ink">People</NuxtLink>
+        <NuxtLink v-if="['owner','admin'].includes(currentUser?.role || '')" :to="workspacePath('/site')" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-muted hover:bg-canvas hover:text-ink">Public site & theme</NuxtLink>
+        <NuxtLink v-if="['owner','admin'].includes(currentUser?.role || '')" :to="workspacePath('/settings')" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-muted hover:bg-canvas hover:text-ink">Payments & plans</NuxtLink>
         <NuxtLink v-if="['owner','admin'].includes(currentUser?.role || '') && currentCompany?.slug" :to="'/p/' + currentCompany.slug" target="_blank" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-brand hover:bg-brand-soft">View public page ↗</NuxtLink>
       </nav>
     </header>
@@ -249,7 +249,7 @@ onMounted(() => {
       </section>
 
       <section v-if="canManageContent" class="mt-7 grid gap-4 md:grid-cols-2">
-        <NuxtLink to="/dashboard/site" class="group flex items-center gap-4 rounded-2xl border border-line bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-lg"><span class="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-brand-soft text-xl text-brand">✦</span><span class="min-w-0 flex-1"><strong class="block text-sm font-semibold">Public company page & theme</strong><span class="mt-1 block text-xs leading-5 text-muted">Set your branding, colours, logo, banner and company story.</span></span><span class="text-lg text-muted transition group-hover:translate-x-1">→</span></NuxtLink>
+        <NuxtLink :to="workspacePath('/site')" class="group flex items-center gap-4 rounded-2xl border border-line bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-lg"><span class="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-brand-soft text-xl text-brand">✦</span><span class="min-w-0 flex-1"><strong class="block text-sm font-semibold">Public company page & theme</strong><span class="mt-1 block text-xs leading-5 text-muted">Set your branding, colours, logo, banner and company story.</span></span><span class="text-lg text-muted transition group-hover:translate-x-1">→</span></NuxtLink>
         <NuxtLink v-if="currentCompany?.slug" :to="'/p/' + currentCompany.slug" target="_blank" class="group flex items-center gap-4 rounded-2xl border border-line bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-lg"><span class="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-emerald-100 text-xl text-emerald-700">↗</span><span class="min-w-0 flex-1"><strong class="block text-sm font-semibold">View public course catalogue</strong><span class="mt-1 block text-xs leading-5 text-muted">Open your company’s public learning page to share with learners.</span></span><span class="text-lg text-muted transition group-hover:translate-x-1">→</span></NuxtLink>
       </section>
 
