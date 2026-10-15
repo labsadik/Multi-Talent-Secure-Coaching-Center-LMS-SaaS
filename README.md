@@ -2,6 +2,14 @@
 
 Multi-tenant learning management platform with a Rust API and a Nuxt.js web frontend.
 
+## Quick start on Windows / VS Code
+
+Install Node.js 22.12+, the stable Rust toolchain, and Docker Desktop. From VS Code's PowerShell terminal at the repository root, run:
+
+    .\\scripts\\dev.ps1
+
+The script creates local `.env` files from the development examples when missing, starts the included MongoDB development container if MongoDB is not already reachable, opens the Rust API and Nuxt frontend in separate terminals, and waits for `/health/ready` before starting the frontend. Review `backend/.env` before use. To start MongoDB manually, run `docker compose -f compose.dev.yml up -d mongo`. The container stores development data in a named Docker volume; stop it with `docker compose -f compose.dev.yml down` (add `-v` only when you intentionally want to delete that local database volume).
+
 ## Repository layout
 
 - **backend/** — Rust, Axum/Tokio, MongoDB API, HTTP security, cookie-session refresh endpoints, tenant-scoped course/content workflows, media/payment integrations, and backend smoke tests.
