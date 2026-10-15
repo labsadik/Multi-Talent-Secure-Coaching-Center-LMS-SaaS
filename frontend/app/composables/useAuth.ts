@@ -50,6 +50,12 @@ export function useAuth() {
   }
   async function getCourses() { return backend<Course[]>('courses') }
   async function createCourse(input: CreateCourseInput) { return backend<Course>('courses', { method: 'POST', body: input }) }
+  async function updateCourse(courseId: string, input: CreateCourseInput) {
+    return backend<Course>('courses/' + encodeURIComponent(courseId), { method: 'PATCH', body: input })
+  }
+  async function deleteCourse(courseId: string) {
+    return backend<Course>('courses/' + encodeURIComponent(courseId), { method: 'DELETE' })
+  }
   async function publishCourse(courseId: string) {
     return backend<Course>('courses/' + encodeURIComponent(courseId) + '/publish', { method: 'POST' })
   }
@@ -57,9 +63,21 @@ export function useAuth() {
   async function createSubject(courseId: string, input: { title: string; slug: string; description?: string; sortOrder?: number }) {
     return backend<ContentItem>('courses/' + encodeURIComponent(courseId) + '/subjects', { method: 'POST', body: input })
   }
+  async function updateSubject(subjectId: string, input: { title: string; slug: string; description?: string; sortOrder?: number }) {
+    return backend<ContentItem>('subjects/' + encodeURIComponent(subjectId), { method: 'PATCH', body: input })
+  }
+  async function deleteSubject(subjectId: string) {
+    return backend<void>('subjects/' + encodeURIComponent(subjectId), { method: 'DELETE' })
+  }
   async function getTopics(subjectId: string) { return backend<ContentItem[]>('subjects/' + encodeURIComponent(subjectId) + '/topics') }
   async function createTopic(subjectId: string, input: { title: string; slug: string; description?: string; sortOrder?: number }) {
     return backend<ContentItem>('subjects/' + encodeURIComponent(subjectId) + '/topics', { method: 'POST', body: input })
+  }
+  async function updateTopic(topicId: string, input: { title: string; slug: string; description?: string; sortOrder?: number }) {
+    return backend<ContentItem>('topics/' + encodeURIComponent(topicId), { method: 'PATCH', body: input })
+  }
+  async function deleteTopic(topicId: string) {
+    return backend<void>('topics/' + encodeURIComponent(topicId), { method: 'DELETE' })
   }
   async function getLessons(topicId: string) { return backend<ContentItem[]>('topics/' + encodeURIComponent(topicId) + '/lessons') }
   async function createLesson(topicId: string, input: {
@@ -67,6 +85,15 @@ export function useAuth() {
     durationSeconds?: number; isPreview?: boolean; sortOrder?: number
   }) {
     return backend<ContentItem>('topics/' + encodeURIComponent(topicId) + '/lessons', { method: 'POST', body: input })
+  }
+  async function updateLesson(lessonId: string, input: {
+    title: string; slug: string; lessonType: string; content?: string; mediaAssetId?: string
+    durationSeconds?: number; isPreview?: boolean; sortOrder?: number
+  }) {
+    return backend<ContentItem>('lessons/' + encodeURIComponent(lessonId), { method: 'PATCH', body: input })
+  }
+  async function deleteLesson(lessonId: string) {
+    return backend<void>('lessons/' + encodeURIComponent(lessonId), { method: 'DELETE' })
   }
   async function getCompanyUsers() { return backend<CompanyUser[]>('company/users') }
   async function createCompanyUser(input: { name: string; email: string; password: string; role: string }) {
@@ -117,7 +144,10 @@ export function useAuth() {
   }
   return {
     currentUser, currentCompany, login, register, registerLearner, loadCurrentUser,
-    getCourses, createCourse, publishCourse, getSubjects, createSubject, getTopics, createTopic, getLessons, createLesson,
+    getCourses, createCourse, updateCourse, deleteCourse, publishCourse,
+    getSubjects, createSubject, updateSubject, deleteSubject,
+    getTopics, createTopic, updateTopic, deleteTopic,
+    getLessons, createLesson, updateLesson, deleteLesson,
     getCompanyUsers, createCompanyUser, updateCompanyUser, getMyCourses, updateLessonProgress, getCourseProgress, getPlayback,
     uploadAsset, createVideoTicket, refreshAssetStatus, getRazorpaySettings, configureRazorpay, createCourseOrder,
     verifyCoursePayment, createSubscriptionOrder, logout, clearSession,
