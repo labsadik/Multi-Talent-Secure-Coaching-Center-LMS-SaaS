@@ -11,6 +11,8 @@ pub async fn ensure_indexes(db: &Database) -> mongodb::error::Result<()> {
     let courses: Collection<mongodb::bson::Document> = db.collection("courses");
     let subjects: Collection<mongodb::bson::Document> = db.collection("subjects");
     let topics: Collection<mongodb::bson::Document> = db.collection("topics");
+    let chapters: Collection<mongodb::bson::Document> = db.collection("chapters");
+    let chapter_parts: Collection<mongodb::bson::Document> = db.collection("chapter_parts");
     let lessons: Collection<mongodb::bson::Document> = db.collection("lessons");
     let assets: Collection<mongodb::bson::Document> = db.collection("assets");
     let orders: Collection<mongodb::bson::Document> = db.collection("orders");
@@ -99,6 +101,24 @@ pub async fn ensure_indexes(db: &Database) -> mongodb::error::Result<()> {
         &lessons,
         IndexModel::builder()
             .keys(doc! { "companyId": 1, "topicId": 1, "slug": 1 })
+            .options(IndexOptions::builder().unique(true).build())
+            .build(),
+    )
+    .await?;
+
+    create_index(
+        &chapters,
+        IndexModel::builder()
+            .keys(doc! { "companyId": 1, "topicId": 1, "slug": 1 })
+            .options(IndexOptions::builder().unique(true).build())
+            .build(),
+    )
+    .await?;
+
+    create_index(
+        &chapter_parts,
+        IndexModel::builder()
+            .keys(doc! { "companyId": 1, "chapterId": 1, "slug": 1 })
             .options(IndexOptions::builder().unique(true).build())
             .build(),
     )
