@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 # Run only against a disposable development/test database. This script creates
-# two companies, a learner, and a course; it intentionally does not clean them up.
+# two companies, staff/learner accounts, and courses; it intentionally does not clean them up.
 BASE_URL="${BASE_URL:-http://127.0.0.1:8080}"
 BASE_URL="${BASE_URL%/}"
 
@@ -295,4 +295,4 @@ payload="$(jq -n --arg refreshToken "$refresh_a" '{refreshToken:$refreshToken}')
 http 204 "$BASE_URL/api/v1/auth/logout" -H 'Content-Type: application/json' --data "$payload"
 http 401 "$BASE_URL/api/v1/auth/refresh" -H 'Content-Type: application/json' --data "$payload"
 
-printf 'PASS: health, readiness, auth/session, learner/instructor/admin RBAC, course lifecycle, company settings, and tenant isolation.\\n'
+printf 'PASS: health, readiness, auth/session, learner/instructor/admin RBAC, course lifecycle, company settings, and tenant isolation.\n'
