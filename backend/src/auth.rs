@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     error::{AppError, AppResult},
     state::AppState,
-    tenant::{ensure_learner_capacity, require_active_company},
+    tenant::require_active_company,
 };
 
 #[derive(Debug, Clone)]
@@ -260,7 +260,6 @@ pub async fn register(
             "name": &company_name,
             "slug": &company_slug,
             "status": "active",
-            "planCode": "free",
             "createdAt": now,
             "updatedAt": now,
         })
@@ -346,8 +345,7 @@ pub async fn register_learner(
         .get_object_id("_id")
         .map_err(|_| AppError::Internal)?
         .to_owned();
-    let company = require_active_company(&state.db, &company_id).await?;
-    ensure_learner_capacity(&state, &company, &company_id).await?;
+    require_active_company(&state.db, &company_id).await?;
     let user_id = ObjectId::new();
     let now = DateTime::now();
     let password_hash = hash_password(&input.password)?;
