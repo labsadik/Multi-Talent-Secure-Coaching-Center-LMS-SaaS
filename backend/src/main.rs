@@ -14,6 +14,7 @@ mod progress;
 mod learning;
 mod routes;
 mod security;
+mod sites;
 mod state;
 mod tenant;
 
