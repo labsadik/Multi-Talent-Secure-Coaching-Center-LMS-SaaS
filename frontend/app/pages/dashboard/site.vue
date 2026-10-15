@@ -2,7 +2,7 @@
 import type { CompanySiteReply, SiteSettings } from '~/types/api'
 import { apiErrorMessage } from '~/utils/api-error'
 
-definePageMeta({ middleware: ['auth', 'company-dashboard'], alias: ['/workspace/:companySlug/dashboard/site'] })
+definePageMeta({ middleware: ['auth', 'company-dashboard'] })
 
 const route = useRoute()
 function workspacePath(suffix = '') {

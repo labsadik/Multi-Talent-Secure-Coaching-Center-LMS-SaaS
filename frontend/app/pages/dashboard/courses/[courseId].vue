@@ -4,7 +4,6 @@ import { apiErrorMessage } from '~/utils/api-error'
 
 definePageMeta({
   middleware: ['auth', 'company-dashboard'],
-  alias: ['/workspace/:companySlug/dashboard/courses/:courseId'],
 })
 
 interface ChapterView extends ContentItem {
@@ -16,6 +15,7 @@ interface SubjectView extends ContentItem {
 }
 
 const route = useRoute()
+const { confirm } = useConfirmDialog()
 const {
   currentUser, currentCompany,
   getCourses, getSubjects, createSubject, updateSubject, deleteSubject, permanentlyDeleteSubject,
@@ -90,6 +90,24 @@ function slugify(value: string) {
 watch(subjectTitle, value => { if (!subjectSlugTouched.value) subjectSlug.value = slugify(value) })
 watch(chapterTitle, value => { if (!chapterSlugTouched.value) chapterSlug.value = slugify(value) })
 watch(lessonTitle, value => { if (!lessonSlugTouched.value) lessonSlug.value = slugify(value) })
+
+function openSubjectForm() {
+  resetMessages()
+  editingSubjectId.value = ''
+  subjectTitle.value = ''
+  subjectSlug.value = ''
+  subjectSlugTouched.value = false
+  subjectFormOpen.value = true
+}
+function onChapterModalChange(open: boolean) {
+  if (!open) cancelChapterForm()
+}
+function onLessonModalChange(open: boolean) {
+  if (!open) resetLessonForm()
+}
+function onMediaModalChange(open: boolean) {
+  if (!open) mediaEditorLessonId.value = ''
+}
 
 function resetMessages() {
   pageError.value = ''
@@ -265,7 +283,12 @@ async function saveSubject() {
   } finally { saving.value = false }
 }
 async function removeSubject(subject: SubjectView) {
-  if (!import.meta.client || !window.confirm('Archive "' + subject.title + '" and its curriculum? The content is kept in the database as archived data.')) return
+  if (!await confirm({
+    title: 'Archive subject?',
+    message: 'Archive "' + subject.title + '" and its curriculum? The content will be kept as archived data.',
+    confirmLabel: 'Archive subject',
+    tone: 'danger',
+  })) return
   resetMessages()
   try {
     await deleteSubject(subject.id)
@@ -275,7 +298,12 @@ async function removeSubject(subject: SubjectView) {
   } catch (error) { pageError.value = apiErrorMessage(error, 'Subject could not be archived.') }
 }
 async function permanentlyRemoveSubject(subject: SubjectView) {
-  if (!import.meta.client || !window.confirm('Permanently delete "' + subject.title + '" and all its chapters, lessons and media? This cannot be undone. Enrollment/payment records are retained, but lesson progress for deleted lessons is removed.')) return
+  if (!await confirm({
+    title: 'Permanently delete subject?',
+    message: 'Delete "' + subject.title + '" and all chapters, lessons, and media? This cannot be undone. Payment records are retained, but progress for deleted lessons is removed.',
+    confirmLabel: 'Delete permanently',
+    tone: 'danger',
+  })) return
   resetMessages()
   try {
     await permanentlyDeleteSubject(subject.id)
@@ -310,7 +338,12 @@ async function saveChapter(subject: SubjectView) {
   } finally { saving.value = false }
 }
 async function removeChapter(chapter: ChapterView) {
-  if (!import.meta.client || !window.confirm('Archive "' + chapter.title + '" and its lessons?')) return
+  if (!await confirm({
+    title: 'Archive chapter?',
+    message: 'Archive "' + chapter.title + '" and its lessons?',
+    confirmLabel: 'Archive chapter',
+    tone: 'danger',
+  })) return
   resetMessages()
   try {
     await deleteTopic(chapter.id)
@@ -321,7 +354,12 @@ async function removeChapter(chapter: ChapterView) {
   } catch (error) { pageError.value = apiErrorMessage(error, 'Chapter could not be archived.') }
 }
 async function permanentlyRemoveChapter(chapter: ChapterView) {
-  if (!import.meta.client || !window.confirm('Permanently delete "' + chapter.title + '", its lessons and attached media? This cannot be undone. Enrollment/payment records are retained, but lesson progress for deleted lessons is removed.')) return
+  if (!await confirm({
+    title: 'Permanently delete chapter?',
+    message: 'Delete "' + chapter.title + '", its lessons, and attached media? This cannot be undone. Payment records are retained, but progress for deleted lessons is removed.',
+    confirmLabel: 'Delete permanently',
+    tone: 'danger',
+  })) return
   resetMessages()
   try {
     await permanentlyDeleteTopic(chapter.id)
@@ -360,7 +398,12 @@ async function saveLesson(chapter: ChapterView) {
   } finally { saving.value = false }
 }
 async function removeLesson(lesson: ContentItem) {
-  if (!import.meta.client || !window.confirm('Archive "' + lesson.title + '"?')) return
+  if (!await confirm({
+    title: 'Archive lesson?',
+    message: 'Archive "' + lesson.title + '"? Learner records will be retained.',
+    confirmLabel: 'Archive lesson',
+    tone: 'danger',
+  })) return
   resetMessages()
   try {
     await deleteLesson(lesson.id)
@@ -369,7 +412,12 @@ async function removeLesson(lesson: ContentItem) {
   } catch (error) { pageError.value = apiErrorMessage(error, 'Lesson could not be archived.') }
 }
 async function permanentlyRemoveLesson(lesson: ContentItem) {
-  if (!import.meta.client || !window.confirm('Permanently delete "' + lesson.title + '" and its attached media? This cannot be undone. Learner progress for this lesson will be removed.')) return
+  if (!await confirm({
+    title: 'Permanently delete lesson?',
+    message: 'Delete "' + lesson.title + '" and its attached media? This cannot be undone, and learner progress for this lesson will be removed.',
+    confirmLabel: 'Delete permanently',
+    tone: 'danger',
+  })) return
   resetMessages()
   try {
     await permanentlyDeleteLesson(lesson.id)
@@ -382,7 +430,12 @@ async function removeMediaAsset(asset: TopicAsset, permanently = false) {
   const prompt = permanently
     ? 'Permanently delete "' + asset.title + '" from Bunny and the media library? This cannot be undone.'
     : 'Archive "' + asset.title + '"? It will no longer be available to attach to lessons.'
-  if (!window.confirm(prompt)) return
+  if (!await confirm({
+    title: permanently ? 'Delete media permanently?' : 'Archive media?',
+    message: prompt,
+    confirmLabel: permanently ? 'Delete media' : 'Archive media',
+    tone: 'danger',
+  })) return
   resetMessages()
   try {
     if (permanently) await permanentlyDeleteAsset(asset.id)
@@ -734,13 +787,15 @@ onMounted(async () => {
         <section v-if="isManager" class="mb-5 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
           <div class="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
             <div><h3 class="font-semibold">1. Subjects</h3><p class="mt-1 text-sm text-slate-500">Start with a subject, then add chapters and lessons inside it.</p></div>
-            <button type="button" class="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800" @click="subjectFormOpen = !subjectFormOpen; editingSubjectId = ''; subjectTitle = ''; subjectSlug = ''; subjectSlugTouched = false">{{ subjectFormOpen && !editingSubjectId ? 'Close' : 'Add subject' }}</button>
+            <button type="button" class="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-800" @click="openSubjectForm">Add subject</button>
           </div>
-          <form v-if="subjectFormOpen" class="mt-4 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-2" @submit.prevent="saveSubject">
+          <UiModal v-model:open="subjectFormOpen" :title="editingSubjectId ? 'Edit subject' : 'Create subject'" description="Organise your curriculum into clear subject areas." size="md">
+          <form class="grid gap-3 sm:grid-cols-2" @submit.prevent="saveSubject">
             <div><label for="subjectTitle" class="mb-1.5 block text-xs font-semibold text-slate-600">Subject name</label><input id="subjectTitle" v-model="subjectTitle" required minlength="2" maxlength="140" placeholder="e.g. Mathematics" class="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100" /></div>
             <div><label for="subjectSlug" class="mb-1.5 block text-xs font-semibold text-slate-600">URL slug</label><input id="subjectSlug" v-model="subjectSlug" @input="subjectSlugTouched = true" required minlength="2" maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" class="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100" /></div>
             <div class="flex gap-2 sm:col-span-2"><button type="submit" :disabled="saving" class="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{{ saving ? 'Saving…' : (editingSubjectId ? 'Save subject' : 'Create subject') }}</button><button type="button" class="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600" @click="subjectFormOpen = false; editingSubjectId = ''">Cancel</button></div>
           </form>
+        </UiModal>
         </section>
 
         <div v-if="subjects.length" class="space-y-4">
@@ -779,11 +834,13 @@ onMounted(async () => {
                       </button>
                       <div class="min-w-0 flex-1"><button type="button" class="text-left text-sm font-semibold hover:text-blue-700" @click="openLesson(lesson)">{{ lessonIndex + 1 }}. {{ lesson.title }}</button><p class="mt-1 text-xs capitalize text-slate-500">{{ lesson.lessonType || 'text' }}<span v-if="lesson.durationSeconds"> · {{ Math.ceil(lesson.durationSeconds / 60) }} min</span><span v-if="lesson.isPreview"> · Preview</span></p></div>
                       <div class="flex flex-wrap gap-2"><button type="button" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:border-blue-400" @click="openLesson(lesson)">{{ isManager ? 'Preview' : 'Open lesson' }}</button><button v-if="isManager" type="button" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700" @click="editLesson(chapter, lesson)">Edit</button><button v-if="isManager" type="button" class="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700" @click="removeLesson(lesson)">Archive</button><button v-if="isManager" type="button" class="rounded-lg border border-red-300 px-3 py-2 text-xs font-semibold text-red-800" @click="permanentlyRemoveLesson(lesson)">Delete</button><button v-if="isManager" type="button" class="rounded-lg border border-violet-200 px-3 py-2 text-xs font-semibold text-violet-800 hover:border-violet-400" @click="toggleLessonMediaEditor(lesson)">{{ mediaEditorLessonId === lesson.id ? 'Close media' : 'Update media' }}</button><button v-if="isLearner" type="button" :disabled="busyLessonId === lesson.id" class="rounded-lg bg-emerald-100 px-3 py-2 text-xs font-semibold text-emerald-800 disabled:opacity-50" @click="markComplete(lesson)">{{ busyLessonId === lesson.id ? 'Saving…' : 'Mark complete' }}</button></div>
-                      <section v-if="isManager && mediaEditorLessonId === lesson.id" class="basis-full rounded-xl border border-violet-100 bg-violet-50/40 p-3">
-                        <div class="mb-3 flex flex-wrap items-start justify-between gap-2">
-                          <div><h4 class="text-sm font-semibold">Update media · {{ lesson.title }}</h4><p class="mt-1 text-xs text-slate-500">Replace the file attached to this existing lesson. No need to edit or recreate the lesson.</p></div>
-                          <button type="button" class="text-xs font-semibold text-slate-500 underline" @click="mediaEditorLessonId = ''">Close</button>
-                        </div>
+                      <UiModal
+                        :open="isManager && mediaEditorLessonId === lesson.id"
+                        :title="'Update media · ' + lesson.title"
+                        description="Replace the file attached to this existing lesson. The lesson itself does not need to be recreated."
+                        size="lg"
+                        @update:open="onMediaModalChange"
+                      >
                         <div class="grid gap-3 sm:grid-cols-2">
                           <label class="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 hover:border-violet-400" :class="{ 'pointer-events-none opacity-50': !!uploadActivity }">
                             <span class="grid h-9 w-9 place-items-center rounded-lg bg-violet-100 text-xs font-bold text-violet-800">▶</span>
@@ -801,13 +858,19 @@ onMounted(async () => {
                           <div class="mt-2 h-2 overflow-hidden rounded-full bg-slate-200"><div class="h-full rounded-full bg-violet-600 transition-all" :style="{ width: uploadProgress + '%' }" /></div>
                           <p class="mt-2 text-xs text-slate-500">{{ uploadActivity.kind === 'video' ? 'Uploading to Bunny Stream… lesson will switch to Processing and then Ready.' : 'Uploading to Bunny Storage… attaching to this lesson automatically.' }}</p>
                         </div>
-                      </section>
+                      </UiModal>
                     </article>
                   </div>
                   <p v-else class="rounded-xl border border-dashed border-slate-200 px-4 py-7 text-center text-sm text-slate-500">No lessons yet. Add the first lesson to this chapter.</p>
 
-                  <form v-if="isManager && activeLessonChapterId === chapter.id" class="space-y-3 rounded-xl border border-blue-100 bg-blue-50/50 p-4" @submit.prevent="saveLesson(chapter)">
-                    <div class="flex items-center justify-between gap-3"><h4 class="text-sm font-semibold">{{ editingLesson ? 'Edit lesson' : 'New lesson' }}</h4><button type="button" class="text-xs font-semibold text-slate-500 underline" @click="resetLessonForm">Close</button></div>
+                  <UiModal
+                    :open="isManager && activeLessonChapterId === chapter.id"
+                    :title="editingLesson ? 'Edit lesson' : 'Create lesson'"
+                    description="Add the lesson details, then attach a ready media file or upload new content."
+                    size="lg"
+                    @update:open="onLessonModalChange"
+                  >
+                  <form class="space-y-3" @submit.prevent="saveLesson(chapter)">
                     <div class="grid gap-3 sm:grid-cols-2">
                       <div><label for="lessonTitle" class="mb-1.5 block text-xs font-semibold text-slate-600">Lesson title</label><input id="lessonTitle" v-model="lessonTitle" required minlength="2" maxlength="140" placeholder="Lesson name" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100" /></div>
                       <div><label for="lessonSlug" class="mb-1.5 block text-xs font-semibold text-slate-600">URL slug</label><input id="lessonSlug" v-model="lessonSlug" @input="lessonSlugTouched = true" required minlength="2" maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100" /></div>
@@ -851,6 +914,7 @@ onMounted(async () => {
                     <label class="flex items-center gap-2 text-xs text-slate-600"><input v-model="lessonPreview" type="checkbox" class="h-4 w-4 rounded border-slate-300 accent-blue-700" /> Allow preview before enrolment</label>
                     <div class="flex flex-wrap gap-2"><button type="submit" :disabled="saving" class="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{{ saving ? 'Saving…' : (editingLesson ? 'Save lesson' : 'Create lesson') }}</button><button type="button" class="rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700" @click="resetLessonForm">Cancel</button></div>
                   </form>
+                  </UiModal>
 
                   <section v-if="isManager" class="rounded-xl border border-slate-200 p-4">
                     <div class="mb-3"><h4 class="text-sm font-semibold">Chapter media</h4><p class="mt-1 text-xs leading-5 text-slate-500">Images and PDFs go to Bunny Storage. Videos upload to Bunny Stream and must finish processing before use.</p></div>
@@ -880,12 +944,20 @@ onMounted(async () => {
                 </div>
               </div>
 
-              <form v-if="isManager && chapterFormSubjectId === subject.id" class="grid gap-3 rounded-xl border border-blue-100 bg-blue-50/50 p-4 sm:grid-cols-2" @submit.prevent="saveChapter(subject)">
+              <UiModal
+                :open="isManager && chapterFormSubjectId === subject.id"
+                :title="editingChapterId ? 'Edit chapter' : 'Add chapter'"
+                :description="'Add a chapter to ' + subject.title + '.'"
+                size="md"
+                @update:open="onChapterModalChange"
+              >
+              <form class="grid gap-3 sm:grid-cols-2" @submit.prevent="saveChapter(subject)">
                 <div class="sm:col-span-2"><h4 class="text-sm font-semibold">{{ editingChapterId ? 'Edit chapter' : 'New chapter' }}</h4></div>
                 <div><label for="chapterTitle" class="mb-1.5 block text-xs font-semibold text-slate-600">Chapter name</label><input id="chapterTitle" v-model="chapterTitle" required minlength="2" maxlength="140" placeholder="e.g. Algebra basics" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100" /></div>
                 <div><label for="chapterSlug" class="mb-1.5 block text-xs font-semibold text-slate-600">URL slug</label><input id="chapterSlug" v-model="chapterSlug" @input="chapterSlugTouched = true" required minlength="2" maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100" /></div>
                 <div class="flex gap-2 sm:col-span-2"><button type="submit" :disabled="saving" class="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{{ saving ? 'Saving…' : (editingChapterId ? 'Save chapter' : 'Create chapter') }}</button><button type="button" class="rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700" @click="cancelChapterForm">Cancel</button></div>
               </form>
+              </UiModal>
 
               <div v-if="isManager" class="pt-1"><button v-if="chapterFormSubjectId !== subject.id" type="button" class="rounded-lg border border-dashed border-slate-300 px-3 py-2 text-xs font-semibold text-slate-600 hover:border-blue-400 hover:text-blue-700" @click="openChapterForm(subject)">+ Add chapter to {{ subject.title }}</button></div>
             </div>
@@ -893,7 +965,7 @@ onMounted(async () => {
         </div>
         <section v-else class="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
           <h3 class="font-semibold">No subjects yet</h3><p class="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">{{ isManager ? 'Create a subject first. Add chapters under the subject, then place lessons inside each chapter.' : 'The company has not published a curriculum for this course yet.' }}</p>
-          <button v-if="isManager" type="button" class="mt-5 rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white" @click="subjectFormOpen = true">Create first subject</button>
+          <button v-if="isManager" type="button" class="mt-5 rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white" @click="openSubjectForm">Create first subject</button>
         </section>
       </template>
     </main>
