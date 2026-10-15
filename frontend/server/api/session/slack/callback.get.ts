@@ -37,7 +37,7 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    await startSlackSession(event, companySlug, code)
+    await startSlackSession(event, companySlug, code, returnedState)
     return sendRedirect(event, '/dashboard', 302)
   } catch {
     // Avoid leaking OAuth codes, tokens, API internals, or upstream error details into URLs.
