@@ -1,6 +1,5 @@
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
     Json,
 };
 use futures_util::TryStreamExt;
@@ -247,10 +246,7 @@ pub async fn get_public_company_page(
     Ok(Json(json!({
         "company": { "name": company_name, "slug": slug },
         "site": site,
+        "publicPath": format!("/p/{slug}"),
         "courses": courses,
     })))
-}
-
-pub async fn site_not_found_status() -> StatusCode {
-    StatusCode::NOT_FOUND
 }
