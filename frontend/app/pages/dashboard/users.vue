@@ -84,7 +84,7 @@ onMounted(() => { void load() })
       <section v-if="employeeLoginPath && ['owner', 'admin'].includes(currentUser?.role || '')" class="mt-6 flex flex-col justify-between gap-4 rounded-2xl border border-line bg-white p-5 sm:flex-row sm:items-center">
         <div class="min-w-0">
           <p class="text-sm font-semibold">Employee sign-in panel</p>
-          <p class="mt-1 text-xs leading-5 text-muted">Share this company-specific link with existing team members. They can sign in with their password or the matching company Slack workspace.</p>
+          <p class="mt-1 text-xs leading-5 text-muted">Share this company-specific link with your students and employees. They can sign in with their company account.</p>
           <code class="mt-2 block break-all text-xs text-brand">{{ employeeLoginPath }}</code>
         </div>
         <div class="flex shrink-0 flex-wrap gap-2">

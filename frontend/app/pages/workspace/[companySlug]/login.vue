@@ -11,16 +11,6 @@ const password = ref('')
 const pending = ref(false)
 const errorMessage = ref('')
 
-const slackErrorMessage = computed(() => {
-  const value = typeof route.query.slackError === 'string' ? route.query.slackError : ''
-  if (value === 'not-configured') return 'Slack sign-in is not configured for this workspace yet. Use your password or ask your company administrator to finish Slack setup.'
-  if (value === 'denied') return 'Slack sign-in was cancelled. You can try again or use your password.'
-  if (value === 'state') return 'The Slack sign-in request expired or could not be verified. Please start again.'
-  if (value === 'invalid') return 'The company login link is invalid. Ask your administrator for the correct link.'
-  if (value === 'failed') return 'Slack could not sign you in. Confirm that your Slack workspace is connected and your email already belongs to this company.'
-  return ''
-})
-
 function loginResponsePath() {
   if (currentUser.value?.role === 'learner') return '/dashboard/learn'
   const requested = typeof route.query.redirect === 'string' ? route.query.redirect : '/dashboard'
@@ -54,7 +44,7 @@ async function submitLogin() {
     <NuxtLink to="/" class="mb-8 hidden text-sm font-medium text-muted transition hover:text-ink lg:inline-flex">← Back to Newage</NuxtLink>
     <p class="text-xs font-bold uppercase tracking-[0.2em] text-brand">Company workspace</p>
     <h1 class="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Sign in to your team.</h1>
-    <p class="mt-3 text-sm leading-6 text-muted">Use the account your company assigned to you, or continue with its connected Slack workspace.</p>
+    <p class="mt-3 text-sm leading-6 text-muted">Use the account your company assigned to you.</p>
 
     <div class="mt-5 flex items-center gap-3 rounded-xl border border-line bg-canvas px-4 py-3">
       <span class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand text-sm font-black text-white">N</span>
@@ -63,19 +53,7 @@ async function submitLogin() {
         <p class="break-all text-sm font-semibold">{{ companySlug }}</p>
       </div>
     </div>
-
-    <div v-if="slackErrorMessage" role="alert" class="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">{{ slackErrorMessage }}</div>
     <div v-if="errorMessage" role="alert" class="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700">{{ errorMessage }}</div>
-
-    <a
-      :href="'/api/session/slack/start?companySlug=' + encodeURIComponent(companySlug)"
-      class="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-line bg-white px-5 py-3.5 text-sm font-semibold text-ink transition hover:bg-canvas"
-    >
-      <span class="grid h-5 w-5 place-items-center rounded bg-[#4A154B] text-xs font-bold text-white" aria-hidden="true">S</span>
-      Continue with company Slack
-    </a>
-
-    <div class="my-6 flex items-center gap-3 text-xs text-muted"><span class="h-px flex-1 bg-line" /><span>or use your work account</span><span class="h-px flex-1 bg-line" /></div>
 
     <form class="space-y-5" @submit.prevent="submitLogin">
       <div>
@@ -92,6 +70,6 @@ async function submitLogin() {
     </form>
 
     <p class="mt-7 text-center text-sm text-muted">Need access? Contact your company workspace administrator.</p>
-    <p class="mt-3 text-center text-xs leading-5 text-muted">Access is limited to an active user in this company. Slack sign-in must match the company's connected workspace and the email on your account.</p>
+    <p class="mt-3 text-center text-xs leading-5 text-muted">Access is limited to an active user in this company.</p>
   </div>
 </template>
