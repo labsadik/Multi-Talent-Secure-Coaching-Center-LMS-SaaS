@@ -18,6 +18,7 @@ pub struct CreateCourseRequest {
     pub slug: String,
     pub description: Option<String>,
     pub price_in_paise: Option<i64>,
+    pub thumbnail_url: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -29,6 +30,7 @@ pub struct CourseResponse {
     pub description: Option<String>,
     pub price_in_paise: i64,
     pub currency: String,
+    pub thumbnail_url: Option<String>,
     pub status: String,
     pub created_at_ms: i64,
 }
@@ -99,6 +101,7 @@ pub async fn create_course(
     let slug = input.slug.trim().to_ascii_lowercase();
     let description = input.description.map(|value| value.trim().to_owned());
     let price_in_paise = input.price_in_paise.unwrap_or(0);
+    let thumbnail_url = input.thumbnail_url.as_deref().map(str::trim).filter(|value| !value.is_empty()).map(str::to_owned);
 
     if !(3..=140).contains(&title.chars().count())
         || !valid_slug(&slug)
@@ -106,6 +109,7 @@ pub async fn create_course(
         || description
             .as_ref()
             .is_some_and(|value| value.chars().count() > 10_000)
+        || thumbnail_url.as_ref().is_some_and(|url| !url.starts_with("https://") || url.len() > 2048)
     {
         return Err(AppError::BadRequest(
             "title, slug, description, or price does not meet validation rules",
@@ -133,6 +137,7 @@ pub async fn create_course(
         "slug": &slug,
         "description": description.clone(),
         "priceInPaise": price_in_paise,
+        "thumbnailUrl": thumbnail_url,
         "currency": "INR",
         "status": "draft",
         "createdBy": auth.user_id.clone(),
@@ -161,6 +166,7 @@ fn course_response(document: Document) -> AppResult<CourseResponse> {
         .map_err(|_| AppError::Internal)?
         .to_owned();
     let description = document.get_str("description").ok().map(str::to_owned);
+    let thumbnail_url = document.get_str("thumbnailUrl").ok().map(str::to_owned);
     let currency = document.get_str("currency").unwrap_or("INR").to_owned();
     let status = document.get_str("status").unwrap_or("draft").to_owned();
     let price_in_paise = document.get_i64("priceInPaise").unwrap_or(0);
@@ -176,6 +182,7 @@ fn course_response(document: Document) -> AppResult<CourseResponse> {
         description,
         price_in_paise,
         currency,
+        thumbnail_url,
         status,
         created_at_ms,
     })
@@ -198,13 +205,15 @@ pub async fn update_course(
     let slug = input.slug.trim().to_ascii_lowercase();
     let description = input.description.map(|value| value.trim().to_owned());
     let price_in_paise = input.price_in_paise.unwrap_or(0);
+    let thumbnail_url = input.thumbnail_url.as_deref().map(str::trim).filter(|value| !value.is_empty()).map(str::to_owned);
     if !(3..=140).contains(&title.chars().count())
         || !valid_slug(&slug)
         || !(0..=100_000_000).contains(&price_in_paise)
         || description.as_ref().is_some_and(|value| value.chars().count() > 10_000)
+        || thumbnail_url.as_ref().is_some_and(|url| !url.starts_with("https://") || url.len() > 2048)
     {
         return Err(AppError::BadRequest(
-            "title, slug, description, or price does not meet validation rules",
+            "title, slug, description, price, or thumbnail URL does not meet validation rules",
         ));
     }
 
@@ -233,6 +242,7 @@ pub async fn update_course(
             "slug": &slug,
             "description": description.clone(),
             "priceInPaise": price_in_paise,
+            "thumbnailUrl": thumbnail_url,
             "updatedAt": DateTime::now(),
         } },
     ).await.map_err(AppError::from_mongo)?;
