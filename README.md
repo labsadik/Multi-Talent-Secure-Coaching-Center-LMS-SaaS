@@ -65,3 +65,14 @@ For session behavior and frontend setup, see [frontend/README.md](frontend/READM
 - Frontend: npm run typecheck and npm run build from frontend/; GitHub Actions runs both.
 
 This repository is a development foundation. Provider sandbox verification, operational monitoring, atomic quota enforcement, production secrets/TLS/backups, and production security/load reviews are required before public launch.
+
+
+## Company-specific employee login
+
+Every workspace has its own employee login panel at `/workspace/<company-slug>/login`. Owners/admins can copy the exact company URL from **Dashboard → People**. Password sign-in looks up an active user within that exact company ID; Slack sign-in requires a verified email already present in that company plus a configured matching Slack workspace. It never provisions a new user through Slack.
+
+## Media storage layout
+
+Images and PDFs are uploaded through the authenticated server-side API to Bunny Storage. Once attached to a lesson, the object is stored under a company/course/subject/part/chapter/chapter-part/lesson path containing stable IDs and readable slugs. Video uploads use a short-lived Bunny Stream TUS authorization minted by the backend; API keys remain server-side. Stream videos are grouped in per-lesson collections named with the relevant tenant/curriculum IDs (Bunny Stream collections are flat, not a nested folder tree). Asset ownership queries remain scoped to the authenticated `companyId`.
+
+Optional Slack SSO setup and upload details are documented in [frontend/README.md](frontend/README.md#company-login-slack-sso-and-media).

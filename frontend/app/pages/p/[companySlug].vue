@@ -44,7 +44,7 @@ onMounted(async () => {
           </NuxtLink>
           <nav class="flex shrink-0 items-center gap-2 sm:gap-3" aria-label="Company page navigation">
             <a href="#courses" class="hidden rounded-xl px-4 py-2.5 text-sm font-semibold text-muted hover:bg-canvas sm:inline-flex">Courses</a>
-            <NuxtLink to="/login" class="rounded-xl border border-line px-3 py-2.5 text-xs font-semibold sm:px-4 sm:text-sm">Sign in</NuxtLink>
+            <NuxtLink :to="'/workspace/' + encodeURIComponent(page.company.slug) + '/login'" class="rounded-xl border border-line px-3 py-2.5 text-xs font-semibold sm:px-4 sm:text-sm">Company sign in</NuxtLink>
             <NuxtLink :to="'/learn/register?companySlug=' + encodeURIComponent(page.company.slug)" class="rounded-xl px-3 py-2.5 text-xs font-semibold text-white sm:px-4 sm:text-sm" :style="{ backgroundColor: page.site.brandColor }">Join to learn</NuxtLink>
           </nav>
         </div>

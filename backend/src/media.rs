@@ -1,6 +1,6 @@
 use axum::{
     body::{Body, Bytes},
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::Response,
     Json,
@@ -26,6 +26,16 @@ use crate::{
 #[serde(rename_all = "camelCase")]
 pub struct CreateVideoTicketRequest {
     pub title: String,
+    pub chapter_id: Option<String>,
+    pub chapter_part_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetUploadContext {
+    pub chapter_id: Option<String>,
+    pub chapter_part_id: Option<String>,
+    pub filename: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -113,6 +123,52 @@ fn required_slug(document: &Document, field: &'static str) -> AppResult<String> 
         .map_err(|_| AppError::Internal)
 }
 
+type ChapterUploadContext = (ObjectId, Document, ObjectId, Document);
+
+async fn resolve_chapter_upload_context(
+    state: &AppState,
+    company_id: &ObjectId,
+    course_id: &ObjectId,
+    subject_id: &ObjectId,
+    topic_id: &ObjectId,
+    chapter_id: Option<&str>,
+    chapter_part_id: Option<&str>,
+) -> AppResult<Option<ChapterUploadContext>> {
+    match (chapter_id, chapter_part_id) {
+        (None, None) => Ok(None),
+        (Some(chapter_id), Some(part_id)) => {
+            let chapter_id = parse_path_id(chapter_id)?;
+            let part_id = parse_path_id(part_id)?;
+            let chapter = state.db.collection::<Document>("chapters").find_one(doc! {
+                "_id": chapter_id.clone(),
+                "companyId": company_id.clone(),
+                "courseId": course_id.clone(),
+                "subjectId": subject_id.clone(),
+                "topicId": topic_id.clone(),
+                "deletedAt": { "$exists": false },
+            }).await?.ok_or(AppError::BadRequest("chapter does not belong to this company, course and part"))?;
+            let chapter_part = state.db.collection::<Document>("chapter_parts").find_one(doc! {
+                "_id": part_id.clone(),
+                "companyId": company_id.clone(),
+                "courseId": course_id.clone(),
+                "subjectId": subject_id.clone(),
+                "topicId": topic_id.clone(),
+                "chapterId": chapter_id.clone(),
+                "deletedAt": { "$exists": false },
+            }).await?.ok_or(AppError::BadRequest("chapter part does not belong to the selected chapter"))?;
+            Ok(Some((chapter_id, chapter, part_id, chapter_part)))
+        }
+        _ => Err(AppError::BadRequest("chapterId and chapterPartId must be supplied together")),
+    }
+}
+
+fn safe_original_filename(value: Option<&str>, fallback: &str) -> String {
+    let name = value.unwrap_or(fallback).rsplit(['/', '\\']).next().unwrap_or(fallback);
+    let cleaned: String = name.chars().filter(|ch| !ch.is_control()).take(160).collect();
+    let cleaned = cleaned.trim();
+    if cleaned.is_empty() { fallback.to_owned() } else { cleaned.to_owned() }
+}
+
 fn parse_path_id(value: &str) -> AppResult<ObjectId> {
     ObjectId::parse_str(value).map_err(|_| AppError::BadRequest("invalid resource ID"))
 }
@@ -143,11 +199,55 @@ pub async fn create_video_ticket(
         .get_object_id("_id")
         .map_err(|_| AppError::Internal)?
         .to_owned();
+    let folder_context = resolve_chapter_upload_context(
+        &state,
+        &auth.company_id,
+        &course_id,
+        &subject_id,
+        &topic_id,
+        input.chapter_id.as_deref(),
+        input.chapter_part_id.as_deref(),
+    ).await?;
 
     let stream = BunnyStream::from_settings(&state.settings, state.http.clone())?;
     let courses = state.db.collection::<Document>("courses");
 
-    let collection_id = match course.get_str("bunnyCollectionId").ok() {
+    let collection_id = if let Some((chapter_id, _chapter, chapter_part_id, chapter_part)) = folder_context.as_ref() {
+        if let Some(existing) = chapter_part.get_str("bunnyCollectionId").ok().filter(|value| !value.is_empty()) {
+            existing.to_owned()
+        } else {
+            let company_id_hex = auth.company_id.to_hex();
+            let subject_id_hex = subject_id.to_hex();
+            let topic_id_hex = topic_id.to_hex();
+            let chapter_id_hex = chapter_id.to_hex();
+            let chapter_part_id_hex = chapter_part_id.to_hex();
+            let collection_name = format!(
+                "c-{}-cr-{}-s-{}-t-{}-ch-{}-cp-{}",
+                company_id_hex, course_id.to_hex(), subject_id_hex, topic_id_hex,
+                chapter_id_hex, chapter_part_id_hex
+            );
+            let created = stream.create_collection(&collection_name).await?;
+            let parts = state.db.collection::<Document>("chapter_parts");
+            let update = parts.update_one(
+                doc! {
+                    "_id": chapter_part_id.clone(),
+                    "companyId": auth.company_id.clone(),
+                    "bunnyCollectionId": { "$exists": false },
+                },
+                doc! { "$set": { "bunnyCollectionId": &created, "updatedAt": DateTime::now() } },
+            ).await?;
+            if update.matched_count == 1 {
+                created
+            } else {
+                let current = parts.find_one(doc! {
+                    "_id": chapter_part_id.clone(),
+                    "companyId": auth.company_id.clone(),
+                }).await?.ok_or(AppError::NotFound)?;
+                current.get_str("bunnyCollectionId").map(str::to_owned).map_err(|_| AppError::Internal)?
+            }
+        }
+    } else {
+        match course.get_str("bunnyCollectionId").ok() {
         Some(existing) if !existing.is_empty() => existing.to_owned(),
         _ => {
             let company_id_hex = auth.company_id.to_hex();
@@ -191,6 +291,7 @@ pub async fn create_video_ticket(
                     .map_err(|_| AppError::Internal)?
             }
         }
+    }
     };
 
     let upload = stream
@@ -211,6 +312,8 @@ pub async fn create_video_ticket(
         "courseId": course_id,
         "subjectId": subject_id,
         "topicId": topic_id,
+        "chapterId": folder_context.as_ref().map(|context| context.0.clone()),
+        "chapterPartId": folder_context.as_ref().map(|context| context.2.clone()),
         "title": input.title.trim(),
         "assetType": "video",
         "provider": "bunny_stream",
@@ -255,6 +358,7 @@ pub async fn upload_topic_file(
     State(state): State<AppState>,
     Path(topic_id): Path<String>,
     auth: AuthUser,
+    Query(upload_context): Query<AssetUploadContext>,
     headers: HeaderMap,
     body: Bytes,
 ) -> AppResult<(StatusCode, Json<Value>)> {
@@ -312,14 +416,31 @@ pub async fn upload_topic_file(
         .get_object_id("_id")
         .map_err(|_| AppError::Internal)?
         .to_owned();
+    let folder_context = resolve_chapter_upload_context(
+        &state,
+        &auth.company_id,
+        &course_id,
+        &subject_id,
+        &topic_id,
+        upload_context.chapter_id.as_deref(),
+        upload_context.chapter_part_id.as_deref(),
+    ).await?;
     let company_slug = required_slug(&company, "slug")?;
     let course_slug = required_slug(&course, "slug")?;
     let subject_slug = required_slug(&subject, "slug")?;
     let topic_slug = required_slug(&topic, "slug")?;
 
+    let chapter_id_hex = folder_context.as_ref().map(|context| context.0.to_hex());
+    let chapter_slug = folder_context.as_ref().map(|context| required_slug(&context.1, "slug")).transpose()?;
+    let chapter_part_id_hex = folder_context.as_ref().map(|context| context.2.to_hex());
+    let chapter_part_slug = folder_context.as_ref().map(|context| required_slug(&context.3, "slug")).transpose()?;
+    let chapter_path = chapter_id_hex.as_deref().zip(chapter_slug.as_deref());
+    let chapter_part_path = chapter_part_id_hex.as_deref().zip(chapter_part_slug.as_deref());
+
     let asset_id = ObjectId::new();
     let filename = format!("{}.{}", asset_id.to_hex(), extension);
-    let relative_path = BunnyStorage::course_topic_path(
+    let title = safe_original_filename(upload_context.filename.as_deref(), &filename);
+    let relative_path = BunnyStorage::course_content_path(
         &auth.company_id.to_hex(),
         &company_slug,
         &course_id.to_hex(),
@@ -328,6 +449,9 @@ pub async fn upload_topic_file(
         &subject_slug,
         &topic_id.to_hex(),
         &topic_slug,
+        chapter_path,
+        chapter_part_path,
+        None,
         category,
         &filename,
     )?;
@@ -344,6 +468,9 @@ pub async fn upload_topic_file(
         "courseId": course_id,
         "subjectId": subject_id,
         "topicId": topic_id,
+        "chapterId": folder_context.as_ref().map(|context| context.0.clone()),
+        "chapterPartId": folder_context.as_ref().map(|context| context.2.clone()),
+        "title": &title,
         "assetType": asset_type,
         "provider": "bunny_storage",
         "storagePath": &relative_path,
@@ -725,6 +852,9 @@ pub struct TopicAssetResponse {
     pub duration_seconds: Option<i64>,
     pub created_at_ms: i64,
     pub public_url: Option<String>,
+    pub chapter_id: Option<String>,
+    pub chapter_part_id: Option<String>,
+    pub lesson_id: Option<String>,
 }
 
 pub async fn list_topic_assets(
@@ -778,6 +908,9 @@ pub async fn list_topic_assets(
             duration_seconds: document.get_i64("durationSeconds").ok(),
             created_at_ms: document.get_datetime("createdAt").map(|date| date.timestamp_millis()).unwrap_or_default(),
             public_url,
+            chapter_id: document.get_object_id("chapterId").ok().map(|id| id.to_hex()),
+            chapter_part_id: document.get_object_id("chapterPartId").ok().map(|id| id.to_hex()),
+            lesson_id: document.get_object_id("lessonId").ok().map(|id| id.to_hex()),
         })
     }).collect();
     Ok(Json(assets))

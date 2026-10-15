@@ -65,6 +65,15 @@ async function submitLogin() {
         <input id="password" v-model="password" name="password" type="password" autocomplete="current-password" required maxlength="128" placeholder="Enter your password" class="w-full rounded-xl border border-line bg-white px-4 py-3.5 text-sm outline-none transition placeholder:text-slate-400 focus:border-brand focus:ring-4 focus:ring-brand/10" />
       </div>
 
+      <a
+        v-if="companySlug.trim()"
+        :href="'/api/session/slack/start?companySlug=' + encodeURIComponent(companySlug.trim().toLowerCase())"
+        class="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-line bg-white px-5 py-3.5 text-sm font-semibold text-ink transition hover:bg-canvas"
+      >
+        <span class="grid h-5 w-5 place-items-center rounded bg-[#4A154B] text-xs font-bold text-white" aria-hidden="true">S</span>
+        Continue with company Slack
+      </a>
+
       <button type="submit" :disabled="pending" class="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-brand/20 transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60">
         <svg v-if="pending" viewBox="0 0 24 24" fill="none" class="h-4 w-4 animate-spin" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-opacity=".25" stroke-width="3" /><path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="3" stroke-linecap="round" /></svg>
         {{ pending ? 'Signing you in…' : 'Sign in' }}

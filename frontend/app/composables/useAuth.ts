@@ -146,13 +146,52 @@ export function useAuth() {
   async function getTopicAssets(topicId: string) {
     return backend<TopicAsset[]>('topics/' + encodeURIComponent(topicId) + '/assets')
   }
-  async function uploadAsset(topicId: string, file: File) {
-    return backend<Record<string, unknown>>('topics/' + encodeURIComponent(topicId) + '/assets', {
-      method: 'PUT', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: await file.arrayBuffer(),
+  async function uploadAsset(
+    topicId: string,
+    file: File,
+    context?: { chapterId: string; chapterPartId: string },
+    onProgress?: (percent: number) => void,
+  ) {
+    const params = new URLSearchParams({ filename: file.name })
+    if (context) {
+      params.set('chapterId', context.chapterId)
+      params.set('chapterPartId', context.chapterPartId)
+    }
+    const path = '/api/backend/topics/' + encodeURIComponent(topicId) + '/assets?' + params.toString()
+    return await new Promise<Record<string, unknown>>((resolve, reject) => {
+      const request = new XMLHttpRequest()
+      request.open('PUT', path)
+      request.withCredentials = true
+      request.setRequestHeader('Content-Type', file.type || 'application/octet-stream')
+      request.upload.onprogress = (event) => {
+        if (event.lengthComputable && event.total > 0) {
+          onProgress?.(Math.min(100, Math.round((event.loaded / event.total) * 100)))
+        }
+      }
+      request.onerror = () => reject(new Error('The upload connection was interrupted. Check the frontend and Rust API terminals, then retry.'))
+      request.onabort = () => reject(new Error('The upload was cancelled.'))
+      request.onload = () => {
+        let payload: unknown = {}
+        try { payload = request.responseText ? JSON.parse(request.responseText) : {} } catch { payload = { message: request.responseText } }
+        if (request.status >= 200 && request.status < 300) {
+          resolve(payload as Record<string, unknown>)
+          return
+        }
+        const body = payload as { error?: { message?: string }; statusMessage?: string; message?: string }
+        reject(new Error(body.error?.message || body.statusMessage || body.message || ('File upload failed (HTTP ' + request.status + ').')))
+      }
+      request.send(file)
     })
   }
-  async function createVideoTicket(topicId: string, title: string) {
-    return backend<Record<string, unknown>>('topics/' + encodeURIComponent(topicId) + '/video-upload-ticket', { method: 'POST', body: { title } })
+  async function createVideoTicket(
+    topicId: string,
+    title: string,
+    context?: { chapterId: string; chapterPartId: string },
+  ) {
+    return backend<Record<string, unknown>>('topics/' + encodeURIComponent(topicId) + '/video-upload-ticket', {
+      method: 'POST',
+      body: { title, ...(context || {}) },
+    })
   }
   async function refreshAssetStatus(assetId: string) {
     return backend<Record<string, unknown>>('assets/' + encodeURIComponent(assetId) + '/refresh-status', { method: 'POST' })

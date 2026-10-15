@@ -4,7 +4,7 @@ import { apiErrorMessage } from '~/utils/api-error'
 
 definePageMeta({ middleware: 'auth' })
 
-const { currentUser, getCompanyUsers, createCompanyUser, updateCompanyUser } = useAuth()
+const { currentUser, currentCompany, getCompanyUsers, createCompanyUser, updateCompanyUser } = useAuth()
 const users = ref<CompanyUser[]>([])
 const loading = ref(true)
 const saving = ref(false)
@@ -16,6 +16,20 @@ const email = ref('')
 const password = ref('')
 const role = ref<'instructor' | 'learner' | 'admin'>('instructor')
 const isOwner = computed(() => currentUser.value?.role === 'owner')
+const employeeLoginPath = computed(() => currentCompany.value?.slug
+  ? '/workspace/' + encodeURIComponent(currentCompany.value.slug) + '/login'
+  : '')
+
+async function copyEmployeeLoginLink() {
+  if (!import.meta.client || !employeeLoginPath.value) return
+  try {
+    await navigator.clipboard.writeText(window.location.origin + employeeLoginPath.value)
+    successMessage.value = 'Company login link copied. Share it with your employees.'
+    errorMessage.value = ''
+  } catch {
+    errorMessage.value = 'Clipboard access was blocked. Open the company login panel and copy its URL from the browser address bar.'
+  }
+}
 
 async function load() {
   loading.value = true
@@ -67,6 +81,17 @@ onMounted(() => { void load() })
     <header class="border-b border-line bg-white"><div class="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-4 sm:px-6"><NuxtLink to="/dashboard" class="inline-flex items-center gap-3 font-semibold"><span class="grid h-10 w-10 place-items-center rounded-2xl bg-brand text-lg font-black text-white">N</span>newage<span class="text-brand">.</span></NuxtLink><NuxtLink to="/dashboard" class="rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-muted hover:bg-canvas">Workspace</NuxtLink></div></header>
     <main class="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10">
       <p class="text-xs font-bold uppercase tracking-[0.2em] text-brand">People & access</p><div class="mt-3 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><h1 class="text-3xl font-semibold tracking-tight sm:text-4xl">Your workspace team.</h1><p class="mt-3 max-w-2xl text-sm leading-6 text-muted">Manage team roles and disable access when someone no longer needs it. All changes are enforced by the Rust API.</p></div><button v-if="['owner','admin'].includes(currentUser?.role || '')" type="button" class="rounded-xl bg-brand px-5 py-3.5 text-sm font-semibold text-white hover:bg-brand-dark" @click="formOpen = !formOpen">{{ formOpen ? 'Close form' : 'Add a teammate' }}</button></div>
+      <section v-if="employeeLoginPath && ['owner', 'admin'].includes(currentUser?.role || '')" class="mt-6 flex flex-col justify-between gap-4 rounded-2xl border border-line bg-white p-5 sm:flex-row sm:items-center">
+        <div class="min-w-0">
+          <p class="text-sm font-semibold">Employee sign-in panel</p>
+          <p class="mt-1 text-xs leading-5 text-muted">Share this company-specific link with existing team members. They can sign in with their password or the matching company Slack workspace.</p>
+          <code class="mt-2 block break-all text-xs text-brand">{{ employeeLoginPath }}</code>
+        </div>
+        <div class="flex shrink-0 flex-wrap gap-2">
+          <NuxtLink :to="employeeLoginPath" target="_blank" class="rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-ink hover:bg-canvas">Open panel ↗</NuxtLink>
+          <button type="button" class="rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-dark" @click="copyEmployeeLoginLink">Copy login link</button>
+        </div>
+      </section>
       <div v-if="errorMessage" role="alert" class="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{{ errorMessage }}</div><div v-if="successMessage" role="status" class="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{{ successMessage }}</div>
       <section v-if="formOpen" class="mt-6 rounded-2xl border border-brand/20 bg-white p-5 sm:p-7"><h2 class="font-semibold">Add a teammate</h2><p class="mt-1 text-sm text-muted">Set a temporary password and share it securely with the person you invite.</p><form class="mt-5 grid gap-4 sm:grid-cols-2" @submit.prevent="addUser"><div><label for="name" class="mb-2 block text-sm font-semibold">Full name</label><input id="name" v-model="name" required minlength="2" maxlength="80" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand" /></div><div><label for="email" class="mb-2 block text-sm font-semibold">Email</label><input id="email" v-model="email" required type="email" maxlength="254" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand" /></div><div><label for="password" class="mb-2 block text-sm font-semibold">Temporary password</label><input id="password" v-model="password" required type="password" minlength="12" maxlength="128" autocomplete="new-password" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand" /><p class="mt-1.5 text-xs text-muted">At least 12 characters.</p></div><div><label for="role" class="mb-2 block text-sm font-semibold">Role</label><select id="role" v-model="role" class="w-full rounded-xl border border-line bg-white px-3.5 py-3 text-sm outline-none focus:border-brand"><option value="instructor">Instructor</option><option value="learner">Learner</option><option v-if="isOwner" value="admin">Admin</option></select></div><div class="sm:col-span-2"><button :disabled="saving" class="rounded-xl bg-brand px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">{{ saving ? 'Creating user…' : 'Create teammate' }}</button></div></form></section>
       <section class="mt-8 overflow-hidden rounded-2xl border border-line bg-white">

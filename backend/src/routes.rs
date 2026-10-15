@@ -15,6 +15,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/auth/register", post(auth::register))
         .route("/api/v1/auth/register-learner", post(auth::register_learner))
         .route("/api/v1/auth/login", post(auth::login))
+        .route("/api/v1/auth/slack-login", post(auth::slack_login))
         .route("/api/v1/auth/refresh", post(auth::refresh))
         .route("/api/v1/auth/logout", post(auth::logout))
         .route("/api/v1/auth/me", get(auth::me))

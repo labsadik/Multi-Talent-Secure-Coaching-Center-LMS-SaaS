@@ -110,6 +110,9 @@ export interface TopicAsset {
   durationSeconds?: number | null
   createdAtMs: number
   publicUrl?: string | null
+  chapterId?: string | null
+  chapterPartId?: string | null
+  lessonId?: string | null
 }
 export interface CompanyUser {
   id: string

@@ -73,14 +73,22 @@ const errorMessage = ref('')
 const successMessage = ref('')
 const subjectTitle = ref('')
 const subjectSlug = ref('')
+const subjectSlugTouched = ref(false)
 const topicTitle = ref('')
 const topicSlug = ref('')
+const topicSlugTouched = ref(false)
 const chapterTitle = ref('')
 const chapterSlug = ref('')
+const chapterSlugTouched = ref(false)
 const chapterPartTitle = ref('')
 const chapterPartSlug = ref('')
+const chapterPartSlugTouched = ref(false)
 const lessonTitle = ref('')
 const lessonSlug = ref('')
+const lessonSlugTouched = ref(false)
+const uploadChapterPartByTopic = ref<Record<string, string>>({})
+const uploadMode = ref<'storage' | 'stream' | ''>('')
+const uploadTargetTopicId = ref('')
 const lessonType = ref<'text' | 'video' | 'file'>('text')
 const lessonContent = ref('')
 const lessonThumbnailUrl = ref('')
@@ -103,14 +111,43 @@ const editPreview = ref(false)
 
 const canManageContent = computed(() => ['owner', 'admin', 'instructor'].includes(currentUser.value?.role ?? ''))
 
-watch(subjectTitle, (value) => { if (!subjectSlug.value) subjectSlug.value = slugify(value) })
-watch(topicTitle, (value) => { if (!topicSlug.value) topicSlug.value = slugify(value) })
-watch(chapterTitle, (value) => { if (!chapterSlug.value) chapterSlug.value = slugify(value) })
-watch(chapterPartTitle, (value) => { if (!chapterPartSlug.value) chapterPartSlug.value = slugify(value) })
-watch(lessonTitle, (value) => { if (!lessonSlug.value) lessonSlug.value = slugify(value) })
+watch(subjectTitle, (value) => { if (!subjectSlugTouched.value) subjectSlug.value = slugify(value) })
+watch(topicTitle, (value) => { if (!topicSlugTouched.value) topicSlug.value = slugify(value) })
+watch(chapterTitle, (value) => { if (!chapterSlugTouched.value) chapterSlug.value = slugify(value) })
+watch(chapterPartTitle, (value) => { if (!chapterPartSlugTouched.value) chapterPartSlug.value = slugify(value) })
+watch(lessonTitle, (value) => { if (!lessonSlugTouched.value) lessonSlug.value = slugify(value) })
 
 function slugify(value: string) {
-  return value.trim().toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80)
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  const ascii = trimmed.toLowerCase().normalize('NFKD')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80).replace(/-+$/g, '')
+  if (ascii.length >= 2) return ascii
+  // Non-Latin titles (e.g. Bengali) still need a valid ASCII URL slug.
+  const encoded = Array.from(trimmed, (character) => character.codePointAt(0)!.toString(16)).join('-')
+  const fallback = ('u-' + encoded).slice(0, 80).replace(/-+$/g, '')
+  return fallback.length >= 2 ? fallback : 'unit'
+}
+
+function uploadOptions(topic: TopicOutline) {
+  return topic.chapters.flatMap((chapter) => chapter.parts.map((part) => ({ chapter, part })))
+}
+function findTopic(topicId: string) {
+  return outline.value.flatMap((subject) => subject.topics).find((topic) => topic.id === topicId) ?? null
+}
+function getUploadContext(topicId: string) {
+  const topic = findTopic(topicId)
+  if (!topic) return null
+  const options = uploadOptions(topic)
+  const savedId = uploadChapterPartByTopic.value[topicId]
+  const option = options.find((item) => item.part.id === savedId)
+    ?? options.find((item) => item.part.id === selectedChapterPartId.value)
+    ?? options[0]
+  return option ? { chapterId: option.chapter.id, chapterPartId: option.part.id } : null
+}
+function onUploadContextChange(topicId: string, event: Event) {
+  const target = event.target as HTMLSelectElement
+  if (target.value) uploadChapterPartByTopic.value[topicId] = target.value
 }
 function protectedDownloadUrl(downloadUrl: string) {
   return downloadUrl.startsWith('/api/v1/')
@@ -175,6 +212,15 @@ async function loadOutline() {
         })),
       }
     }))
+    for (const subject of outline.value) {
+      for (const topic of subject.topics) {
+        if (!uploadChapterPartByTopic.value[topic.id]) {
+          const options = uploadOptions(topic)
+          const preferred = options.find((item) => item.part.id === selectedChapterPartId.value) ?? options[0]
+          if (preferred) uploadChapterPartByTopic.value[topic.id] = preferred.part.id
+        }
+      }
+    }
     if (!outline.value.some((subject) => subject.id === selectedSubjectId.value)) {
       selectedSubjectId.value = outline.value[0]?.id ?? ''
     }
@@ -203,6 +249,7 @@ async function saveSubject() {
     await createSubject(courseId.value, { title: subjectTitle.value.trim(), slug: subjectSlug.value.trim().toLowerCase() })
     subjectTitle.value = ''
     subjectSlug.value = ''
+    subjectSlugTouched.value = false
     await loadOutline()
     successMessage.value = 'Subject added.'
   } catch (error) {
@@ -217,6 +264,7 @@ async function saveTopic(subjectId: string) {
     selectedTopicId.value = topic.id
     topicTitle.value = ''
     topicSlug.value = ''
+    topicSlugTouched.value = false
     await loadOutline()
     successMessage.value = 'Part added to subject.'
   } catch (error) {
@@ -231,6 +279,7 @@ async function saveChapter(topicId: string) {
     selectedChapterId.value = chapter.id
     chapterTitle.value = ''
     chapterSlug.value = ''
+    chapterSlugTouched.value = false
     await loadOutline()
     successMessage.value = 'Chapter added to this part.'
   } catch (error) {
@@ -243,8 +292,11 @@ async function saveChapterPart(chapterId: string) {
   try {
     const part = await createChapterPart(chapterId, { title: chapterPartTitle.value.trim(), slug: chapterPartSlug.value.trim().toLowerCase() })
     selectedChapterPartId.value = part.id
+    const parentTopic = outline.value.flatMap((subject) => subject.topics).find((topic) => topic.chapters.some((chapter) => chapter.id === chapterId))
+    if (parentTopic) uploadChapterPartByTopic.value[parentTopic.id] = part.id
     chapterPartTitle.value = ''
     chapterPartSlug.value = ''
+    chapterPartSlugTouched.value = false
     await loadOutline()
     successMessage.value = 'Chapter part added.'
   } catch (error) {
@@ -272,9 +324,16 @@ async function saveLesson(partId: string) {
     errorMessage.value = 'Select a ready video, PDF or image from the same course part as this lesson.'
     return
   }
-  if (lessonType.value !== 'text' && !selectedAssetId.value) {
+if (lessonType.value !== 'text' && !selectedAssetId.value) {
     errorMessage.value = 'Choose an uploaded media asset before saving a video or file lesson.'
     return
+  }
+  if (lessonType.value !== 'text') {
+    const selectedAsset = context.topic.assets.find((asset) => asset.id === selectedAssetId.value)
+    if (selectedAsset?.chapterPartId && selectedAsset.chapterPartId !== partId) {
+      errorMessage.value = 'This asset belongs to another chapter part. Upload or select an asset from the chapter part chosen for this lesson.'
+      return
+    }
   }
   saving.value = true
   try {
@@ -294,6 +353,7 @@ async function saveLesson(partId: string) {
     await createChapterPartLesson(partId, payload)
     lessonTitle.value = ''
     lessonSlug.value = ''
+    lessonSlugTouched.value = false
     lessonContent.value = ''
     lessonThumbnailUrl.value = ''
     lessonDuration.value = 0
@@ -351,10 +411,18 @@ async function uploadStorageFile(topicId: string, event: Event) {
   const file = input.files?.[0]
   input.value = ''
   if (!file) return
+  const context = getUploadContext(topicId)
+  if (!context) {
+    errorMessage.value = 'Create a chapter and chapter part first, then choose the destination chapter part before uploading media.'
+    return
+  }
   resetMessages()
   uploading.value = true
+  uploadMode.value = 'storage'
+  uploadTargetTopicId.value = topicId
+  uploadProgress.value = 0
   try {
-    const result = await uploadAsset(topicId, file) as Record<string, unknown>
+    const result = await uploadAsset(topicId, file, context, (percent) => { uploadProgress.value = percent })
     const assetId = String(result.assetId || '')
     if (!assetId) throw new Error('The upload finished without an asset ID.')
     selectedAssetId.value = assetId
@@ -362,22 +430,33 @@ async function uploadStorageFile(topicId: string, event: Event) {
     pendingVideoAssetId.value = ''
     await loadOutline()
     successMessage.value = file.type === 'application/pdf'
-      ? 'PDF uploaded. Use the asset library to attach it to a lesson.'
-      : 'Image uploaded. Use the asset library for lesson/course thumbnails.'
+      ? 'PDF saved to Bunny Storage and indexed in this chapter part. Select it for a lesson.'
+      : 'Image saved to Bunny Storage and indexed in this chapter part.'
   } catch (error) {
-    errorMessage.value = apiErrorMessage(error, 'File upload failed. Confirm Bunny Storage is configured and that the file is supported.')
-  } finally { uploading.value = false }
+    errorMessage.value = apiErrorMessage(error, 'File upload failed. Confirm Bunny Storage settings in backend/.env and retry.')
+  } finally {
+    uploading.value = false
+    uploadMode.value = ''
+    uploadTargetTopicId.value = ''
+  }
 }
 async function uploadVideo(topicId: string, event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   input.value = ''
   if (!file) return
+  const context = getUploadContext(topicId)
+  if (!context) {
+    errorMessage.value = 'Create a chapter and chapter part first, then choose the destination chapter part before uploading a video.'
+    return
+  }
   resetMessages()
   uploading.value = true
+  uploadMode.value = 'stream'
+  uploadTargetTopicId.value = topicId
   uploadProgress.value = 0
   try {
-    const raw = await createVideoTicket(topicId, file.name.replace(/\.[^.]+$/, ''))
+    const raw = await createVideoTicket(topicId, file.name.replace(/\.[^.]+$/, ''), context)
     const ticket = raw as unknown as VideoUploadTicket
     if (!ticket.assetId || !ticket.upload?.endpoint) throw new Error('Bunny Stream did not return a complete upload ticket.')
     selectedAssetId.value = ticket.assetId
@@ -406,7 +485,11 @@ async function uploadVideo(topicId: string, event: Event) {
     successMessage.value = 'Video uploaded. Wait until status is ready before selecting it for a lesson.'
   } catch (error) {
     errorMessage.value = apiErrorMessage(error, 'Video upload failed. Check Bunny Stream configuration and upload access.')
-  } finally { uploading.value = false }
+  } finally {
+    uploading.value = false
+    uploadMode.value = ''
+    uploadTargetTopicId.value = ''
+  }
 }
 async function refreshVideo(assetId: string) {
   resetMessages()
@@ -569,7 +652,7 @@ onMounted(() => { void loadOutline() })
             <div class="flex items-center gap-3"><span class="grid h-9 w-9 place-items-center rounded-xl bg-brand-soft text-sm font-bold text-brand">01</span><div><h3 class="font-semibold">Subject</h3><p class="text-xs text-muted">Main programme section</p></div></div>
             <form class="mt-4 space-y-3" @submit.prevent="saveSubject">
               <input v-model="subjectTitle" required minlength="2" maxlength="140" placeholder="e.g. Mathematics" aria-label="Subject title" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
-              <input v-model="subjectSlug" required minlength="2" maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="mathematics" aria-label="Subject slug" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
+              <input v-model="subjectSlug" @input="subjectSlugTouched = true" required minlength="2" maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="mathematics" aria-label="Subject slug" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
               <button :disabled="saving || !course" class="w-full rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">{{ saving ? 'Saving…' : '+ Add subject' }}</button>
             </form>
           </section>
@@ -581,7 +664,7 @@ onMounted(() => { void loadOutline() })
                 <option value="" disabled>Select a subject</option><option v-for="subject in outline" :key="subject.id" :value="subject.id">{{ subject.title }}</option>
               </select>
               <input v-model="topicTitle" required minlength="2" maxlength="140" placeholder="e.g. Algebra — Part 1" aria-label="Part title" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
-              <input v-model="topicSlug" required minlength="2" maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="algebra-part-1" aria-label="Part slug" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
+              <input v-model="topicSlug" @input="topicSlugTouched = true" required minlength="2" maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="algebra-part-1" aria-label="Part slug" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
               <button :disabled="saving || !selectedSubjectId" class="w-full rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-semibold text-violet-800 disabled:opacity-50">{{ saving ? 'Saving…' : '+ Add part' }}</button>
             </form>
           </section>
@@ -593,7 +676,7 @@ onMounted(() => { void loadOutline() })
                 <option value="" disabled>Select a part</option><option v-for="subject in outline" :key="subject.id + '-heading'" disabled>— {{ subject.title }} —</option><template v-for="subject in outline" :key="subject.id + '-part-options'"><option v-for="part in subject.topics" :key="part.id" :value="part.id">{{ subject.title }} / {{ part.title }}</option></template>
               </select>
               <input v-model="chapterTitle" required minlength="2" maxlength="140" placeholder="e.g. Linear equations" aria-label="Chapter title" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
-              <input v-model="chapterSlug" required minlength="2" maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="linear-equations" aria-label="Chapter slug" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
+              <input v-model="chapterSlug" @input="chapterSlugTouched = true" required minlength="2" maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="linear-equations" aria-label="Chapter slug" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
               <button :disabled="saving || !selectedTopicId" class="w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900 disabled:opacity-50">{{ saving ? 'Saving…' : '+ Add chapter' }}</button>
             </form>
           </section>
@@ -605,7 +688,7 @@ onMounted(() => { void loadOutline() })
                 <option value="" disabled>Select a chapter</option><template v-for="subject in outline" :key="subject.id + '-chapter-head'"><option v-for="topic in subject.topics" :key="topic.id + '-part-heading'" disabled>— {{ subject.title }} / {{ topic.title }} —</option><template v-for="topic in subject.topics" :key="topic.id + '-chapter-options'"><option v-for="chapter in topic.chapters" :key="chapter.id" :value="chapter.id">{{ topic.title }} / {{ chapter.title }}</option></template></template>
               </select>
               <input v-model="chapterPartTitle" required minlength="2" maxlength="140" placeholder="e.g. Worked examples" aria-label="Chapter part title" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
-              <input v-model="chapterPartSlug" required minlength="2" maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="worked-examples" aria-label="Chapter part slug" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
+              <input v-model="chapterPartSlug" @input="chapterPartSlugTouched = true" required minlength="2" maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="worked-examples" aria-label="Chapter part slug" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
               <button :disabled="saving || !selectedChapterId" class="w-full rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-900 disabled:opacity-50">{{ saving ? 'Saving…' : '+ Add chapter part' }}</button>
             </form>
           </section>
@@ -617,7 +700,7 @@ onMounted(() => { void loadOutline() })
                 <option value="" disabled>Select a chapter part</option><template v-for="subject in outline" :key="subject.id + '-lesson-chapter-head'"><template v-for="topic in subject.topics" :key="topic.id + '-lesson-topic'"><template v-for="chapter in topic.chapters" :key="chapter.id + '-lesson-options'"><option :value="''" disabled>— {{ subject.title }} / {{ topic.title }} / {{ chapter.title }} —</option><option v-for="part in chapter.parts" :key="part.id" :value="part.id">{{ topic.title }} / {{ chapter.title }} / {{ part.title }}</option></template></template></template>
               </select>
               <input v-model="lessonTitle" required minlength="2" maxlength="140" placeholder="Lesson title" aria-label="Lesson title" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
-              <input v-model="lessonSlug" required minlength="2" maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="lesson-slug" aria-label="Lesson slug" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
+              <input v-model="lessonSlug" @input="lessonSlugTouched = true" required minlength="2" maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="lesson-slug" aria-label="Lesson slug" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
               <select v-model="lessonType" class="w-full rounded-xl border border-line bg-white px-3.5 py-3 text-sm outline-none focus:border-brand"><option value="text">Text lesson</option><option value="video">Video lesson</option><option value="file">PDF / image / file lesson</option></select>
               <textarea v-if="lessonType === 'text'" v-model="lessonContent" required maxlength="50000" rows="5" placeholder="Write the text lesson…" class="w-full resize-y rounded-xl border border-line px-3.5 py-3 text-sm leading-6 outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
               <div v-else class="rounded-xl border border-dashed border-brand/30 bg-brand-soft/40 p-3"><p class="text-xs leading-5 text-muted">Select the video or file from the asset library on the matching course part. The selected asset must belong to the same part and be ready.</p><div class="mt-2 rounded-lg bg-white px-3 py-2.5"><p class="text-[10px] font-bold uppercase tracking-wider text-muted">Selected asset ID</p><p class="mt-1 break-all font-mono text-xs">{{ selectedAssetId || 'No asset selected' }}</p></div></div>
@@ -653,14 +736,26 @@ onMounted(() => { void loadOutline() })
 
                   <div v-if="canManageContent" class="border-t border-violet-100 bg-canvas/60 p-3">
                     <div class="grid gap-3 sm:grid-cols-2">
-                      <label class="block text-xs font-semibold text-muted">Upload thumbnail / image / PDF
-                        <input type="file" accept="image/jpeg,image/png,image/webp,image/gif,application/pdf" :disabled="uploading" class="mt-2 block w-full text-xs file:mr-2 file:rounded-lg file:border-0 file:bg-white file:px-3 file:py-2 file:text-xs file:font-semibold file:text-brand" @change="uploadStorageFile(topic.id, $event)" />
+                      <div class="sm:col-span-2">
+                        <label class="mb-2 block text-xs font-semibold text-muted">Save media under chapter / chapter part</label>
+                        <select :value="getUploadContext(topic.id)?.chapterPartId || ''" :disabled="uploadOptions(topic).length === 0 || uploading" class="w-full rounded-xl border border-line bg-white px-3.5 py-2.5 text-xs outline-none focus:border-brand disabled:bg-canvas disabled:text-muted" @change="onUploadContextChange(topic.id, $event)">
+                          <option v-if="uploadOptions(topic).length === 0" value="">Create a chapter and chapter part first</option>
+                          <option v-for="option in uploadOptions(topic)" :key="option.part.id" :value="option.part.id">{{ option.chapter.title }} / {{ option.part.title }}</option>
+                        </select>
+                        <p class="mt-1.5 text-[11px] leading-5 text-muted">Storage paths include company, course, subject, part, chapter and chapter part. When attached to a lesson, images/PDFs move into that lesson’s folder.</p>
+                      </div>
+                      <label class="block text-xs font-semibold text-muted">Upload thumbnail / image / PDF to Bunny Storage
+                        <input type="file" accept="image/jpeg,image/png,image/webp,image/gif,application/pdf" :disabled="uploading || !getUploadContext(topic.id)" class="mt-2 block w-full text-xs file:mr-2 file:rounded-lg file:border-0 file:bg-white file:px-3 file:py-2 file:text-xs file:font-semibold file:text-brand" @change="uploadStorageFile(topic.id, $event)" />
                       </label>
                       <label class="block text-xs font-semibold text-muted">Upload video to Bunny Stream
-                        <input type="file" accept="video/*" :disabled="uploading" class="mt-2 block w-full text-xs file:mr-2 file:rounded-lg file:border-0 file:bg-white file:px-3 file:py-2 file:text-xs file:font-semibold file:text-brand" @change="uploadVideo(topic.id, $event)" />
+                        <input type="file" accept="video/*" :disabled="uploading || !getUploadContext(topic.id)" class="mt-2 block w-full text-xs file:mr-2 file:rounded-lg file:border-0 file:bg-white file:px-3 file:py-2 file:text-xs file:font-semibold file:text-brand" @change="uploadVideo(topic.id, $event)" />
                       </label>
                     </div>
-                    <p v-if="uploading" class="mt-3 text-xs font-semibold text-brand">Uploading… {{ uploadProgress }}%</p>
+                    <div v-if="uploading && uploadTargetTopicId === topic.id" class="mt-3 rounded-xl border border-brand/15 bg-white p-3">
+                      <div class="flex items-center justify-between gap-3 text-xs"><span class="font-semibold text-brand">{{ uploadMode === 'storage' ? (uploadProgress >= 100 ? 'Saving to Bunny Storage…' : 'Uploading to Bunny Storage…') : (uploadProgress >= 100 ? 'Finalizing video on Bunny Stream…' : 'Uploading to Bunny Stream…') }}</span><span class="tabular-nums text-muted">{{ uploadProgress }}%</span></div>
+                      <div class="mt-2 h-2 overflow-hidden rounded-full bg-canvas"><div class="h-full rounded-full bg-brand transition-[width]" :style="{ width: uploadProgress + '%' }" /></div>
+                      <p class="mt-2 text-[11px] leading-5 text-muted">The server confirms success only after the provider accepts the upload. Keep this page open until completion.</p>
+                    </div>
                     <div v-if="selectedAssetId && selectedAssetTopicId === topic.id" class="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900"><span class="min-w-0 break-all font-mono">Selected: {{ selectedAssetId }}</span><div class="flex gap-3"><button v-if="pendingVideoAssetId" type="button" class="shrink-0 font-semibold underline" @click="refreshVideo(pendingVideoAssetId)">Refresh status</button><button type="button" class="shrink-0 underline" @click="selectedAssetId = ''; pendingVideoAssetId = ''; selectedAssetTopicId = ''">Clear selection</button></div></div>
 
                     <div class="mt-4">

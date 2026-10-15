@@ -65,3 +65,35 @@ The company dashboard now exposes the public storefront and theme editor at /das
 Paid course enrolment CTAs use the company's Razorpay configuration and backend order/payment-verification endpoints. New learners arrive with the company's slug prefilled and continue to their selected course after registration. Provider features require working Bunny/Razorpay credentials, webhook setup, and sandbox round-trip verification before production use.
 
 The subscription checkout UI relies on the authenticated Razorpay webhook as the activation source of truth. A checkout success screen by itself never grants a plan or course access.
+
+
+## Company login, Slack SSO, and media
+
+### Company-specific sign-in
+
+A workspace has a dedicated employee login URL:
+
+`/workspace/<company-slug>/login`
+
+Owners/admins can copy it from **Dashboard → People → Employee sign-in panel**. This URL fixes the workspace slug for login, so employees don't select another company in the login form. Password authentication uses the existing `users` and `companies` documents and only accepts an active user whose `companyId` matches the selected company. No collection or schema migration is required.
+
+### Enable Sign in with Slack
+
+1. Create/configure a Slack app and enable **Sign in with Slack** using OpenID Connect scopes `openid`, `email`, and `profile`.
+2. Register the exact redirect URL `http://localhost:3000/api/session/slack/callback` in the Slack app for local development.
+3. In `frontend/.env`, set `NUXT_SLACK_CLIENT_ID` and keep `NUXT_SLACK_REDIRECT_URI` identical to the registered redirect URL.
+4. In `backend/.env`, set `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, and the same `SLACK_REDIRECT_URI`.
+5. Set `SLACK_COMPANY_WORKSPACES_JSON` to a single-line JSON object mapping each company slug to its Slack workspace team ID, for example:
+   ```json
+   {"acme-learning":"T0123456789","northwind":"T0987654321"}
+   ```
+6. Restart both services. For production, use the production HTTPS callback URL in both config files and register that exact URL in Slack.
+
+The backend verifies Slack's signed ID token, audience, expiry, state-bound nonce, verified email, and workspace team ID. It then searches for an **existing active user scoped to the company**. Slack sign-in cannot create a user or log someone into a different company. Slack client secrets and access tokens remain server-side. A company Slack mapping is environment configuration, so updating a mapping requires a backend restart.
+
+### Uploading images, PDFs, and videos
+
+- Image/PDF bytes are sent through the same-origin Nuxt server endpoint to the Rust API; the Rust API uploads to Bunny Storage using `BUNNY_STORAGE_ZONE`, `BUNNY_STORAGE_API_KEY`, and `BUNNY_STORAGE_HOST`. The browser never receives the Storage API key.
+- Videos use a server-minted, time-limited TUS upload ticket. The browser uploads the selected file directly to Bunny Stream with a short-lived signature; `BUNNY_STREAM_LIBRARY_ID`, `BUNNY_STREAM_API_KEY`, `BUNNY_TUS_ENDPOINT`, and playback token settings stay in `backend/.env`.
+- Choose a chapter part in the course content builder before uploading. Storage paths use company, course, subject, course-part, chapter, chapter-part, and then lesson ID folders. When a ready asset is attached to a lesson, a storage file is copied into the lesson folder and the old key is cleaned up after the database pointer changes. Stream videos are reassigned to a collection named for the company/course/subject/chapter/chapter-part/lesson IDs; Stream collections are flat groups rather than actual nested folders.
+- Upload progress is shown in the course builder. The success message appears only after the API/provider confirms storage. Confirm that the relevant Bunny values are configured in `backend/.env`, then restart the Rust API after env changes.
