@@ -51,7 +51,10 @@ export interface SiteSettings {
   headline: string
   tagline: string
   about: string
-  theme: 'ocean' | 'forest' | 'sunset' | 'midnight' | 'minimal' | string
+  theme: 'ocean' | 'forest' | 'sunset' | 'midnight' | 'minimal' | 'aurora' | 'lavender' | 'monochrome' | 'coral' | string
+  fontFamily: 'sans' | 'rounded' | 'serif' | 'editorial' | 'mono' | string
+  layoutStyle: 'split' | 'centered' | 'editorial' | 'immersive' | string
+  visualEffect: 'none' | 'glass' | 'gradient' | 'glow' | string
   brandColor: string
   accentColor: string
   logoUrl?: string | null

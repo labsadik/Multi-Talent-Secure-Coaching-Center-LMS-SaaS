@@ -10,10 +10,22 @@ const { data: page, pending, error } = await useAsyncData<PublicCompanyPage>(
   () => 'public-company-' + companySlug.value,
   () => $fetch<PublicCompanyPage>('/api/public/companies/' + encodeURIComponent(companySlug.value)),
 )
+const fontStacks: Record<string, string> = {
+  sans: 'Inter, "Avenir Next", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif',
+  rounded: '"Trebuchet MS", "Arial Rounded MT Bold", ui-sans-serif, sans-serif',
+  serif: 'Georgia, "Times New Roman", serif',
+  editorial: '"Palatino Linotype", Palatino, Georgia, serif',
+  mono: '"SFMono-Regular", Consolas, "Liberation Mono", monospace',
+}
 const brandStyle = computed(() => ({
   '--site-brand': page.value?.site.brandColor || '#2563eb',
   '--site-accent': page.value?.site.accentColor || '#14b8a6',
+  '--site-font': fontStacks[page.value?.site.fontFamily || 'sans'] || fontStacks.sans,
 }))
+const storefrontClasses = computed(() => [
+  'public-site--layout-' + (page.value?.site.layoutStyle || 'split'),
+  'public-site--effect-' + (page.value?.site.visualEffect || 'none'),
+])
 const currentCompanyMatches = computed(() =>
   currentCompany.value?.slug?.trim().toLowerCase() === companySlug.value.trim().toLowerCase(),
 )
@@ -43,13 +55,13 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-white" :style="brandStyle">
+  <div class="public-site min-h-screen bg-white" :class="storefrontClasses" :style="brandStyle">
     <div v-if="pending" class="grid min-h-screen place-items-center bg-canvas px-6 text-center"><div><div class="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-line border-t-brand" /><p class="mt-4 text-sm text-muted">Loading company courses…</p></div></div>
     <div v-else-if="error || !page" class="grid min-h-screen place-items-center bg-canvas px-6 text-center">
       <div class="max-w-lg rounded-3xl border border-line bg-white p-8 shadow-sm sm:p-10"><div class="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-brand-soft text-brand"><span class="text-2xl font-black">N</span></div><h1 class="mt-5 text-2xl font-semibold tracking-tight">This public page is not available yet.</h1><p class="mt-3 text-sm leading-6 text-muted">The company may not have published its page, or the link may be incorrect. Ask the company for its public learning link.</p><NuxtLink to="/" class="mt-6 inline-flex rounded-xl px-5 py-3 text-sm font-semibold text-white" :style="{ backgroundColor: '#2563eb' }">Visit Newage</NuxtLink></div>
     </div>
     <template v-else>
-      <header class="sticky top-0 z-30 border-b border-white/30 bg-white/90 backdrop-blur-xl">
+      <header class="public-site__header sticky top-0 z-30 border-b border-white/30 bg-white/90 backdrop-blur-xl">
         <div class="mx-auto flex h-[76px] max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
           <NuxtLink :to="'/p/' + page.company.slug" class="flex min-w-0 items-center gap-3">
             <img v-if="page.site.logoUrl" :src="page.site.logoUrl" :alt="page.site.displayName + ' logo'" class="h-10 w-10 shrink-0 rounded-xl border border-line bg-white object-contain p-1" />
@@ -65,12 +77,12 @@ onMounted(async () => {
       </header>
 
       <main>
-        <section class="relative isolate overflow-hidden bg-slate-950">
+        <section class="public-site__hero relative isolate overflow-hidden bg-slate-950">
           <div v-if="page.site.heroImageUrl" class="absolute inset-0 -z-20 bg-cover bg-center" :style="{ backgroundImage: 'url(' + JSON.stringify(page.site.heroImageUrl) + ')' }" />
-          <div class="absolute inset-0 -z-10" :style="{ background: 'linear-gradient(105deg, ' + page.site.brandColor + 'ef 0%, ' + page.site.brandColor + 'b8 48%, #101827d9 100%)' }" />
+          <div class="public-site__hero-overlay absolute inset-0 -z-10" :style="{ background: 'linear-gradient(105deg, ' + page.site.brandColor + 'ef 0%, ' + page.site.brandColor + 'b8 48%, #101827d9 100%)' }" />
           <div class="absolute -right-32 -top-32 -z-10 h-96 w-96 rounded-full border-[48px] border-white/10" />
-          <div class="mx-auto grid max-w-7xl items-center gap-10 px-4 py-16 sm:px-6 sm:py-24 lg:grid-cols-[1.05fr_.95fr] lg:px-8 lg:py-28">
-            <div>
+          <div class="public-site__hero-inner mx-auto grid max-w-7xl items-center gap-10 px-4 py-16 sm:px-6 sm:py-24 lg:grid-cols-[1.05fr_.95fr] lg:px-8 lg:py-28">
+            <div class="public-site__hero-copy">
               <div class="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/85"><span class="h-2 w-2 rounded-full" :style="{ backgroundColor: page.site.accentColor }" /> Company learning hub</div>
               <h1 class="mt-6 max-w-3xl text-4xl font-semibold leading-[1.08] tracking-tight text-white sm:text-5xl lg:text-6xl">{{ page.site.headline }}</h1>
               <p class="mt-5 max-w-2xl text-base leading-7 text-white/80 sm:text-lg">{{ page.site.tagline }}</p>
@@ -78,9 +90,9 @@ onMounted(async () => {
               <div class="mt-8 flex flex-wrap gap-3"><a href="#courses" class="inline-flex items-center gap-2 rounded-xl px-5 py-3.5 text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5" :style="{ backgroundColor: page.site.accentColor }">Explore courses <span aria-hidden="true">→</span></a><NuxtLink :to="learnerRegistrationPath()" class="inline-flex rounded-xl border border-white/25 bg-white/10 px-5 py-3.5 text-sm font-semibold text-white hover:bg-white/15">Create learner account</NuxtLink></div>
               <div class="mt-10 flex flex-wrap items-center gap-5 text-xs font-medium text-white/65"><span>{{ page.courses.length }} published courses</span><span class="h-1 w-1 rounded-full bg-white/40" /><span>Secure course access</span><span v-if="page.site.contactEmail" class="h-1 w-1 rounded-full bg-white/40" /><a v-if="page.site.contactEmail" :href="'mailto:' + page.site.contactEmail" class="underline underline-offset-4 hover:text-white">Contact us</a></div>
             </div>
-            <div class="relative mx-auto w-full max-w-lg">
+            <div class="public-site__feature-wrap relative mx-auto w-full max-w-lg">
               <div class="absolute -inset-3 rounded-[2rem] blur-2xl opacity-30" :style="{ backgroundColor: page.site.accentColor }" />
-              <div class="relative overflow-hidden rounded-[1.7rem] border border-white/20 bg-white p-4 shadow-2xl sm:p-5">
+              <div class="public-site__feature-panel relative overflow-hidden rounded-[1.7rem] border border-white/20 bg-white p-4 shadow-2xl sm:p-5">
                 <div class="flex items-center justify-between gap-3 border-b border-line pb-4"><div><p class="text-[10px] font-bold uppercase tracking-[0.18em]" :style="{ color: page.site.brandColor }">Featured learning</p><p class="mt-1 text-sm font-semibold text-ink">Explore your next skill</p></div><span class="grid h-10 w-10 place-items-center rounded-xl text-white" :style="{ backgroundColor: page.site.brandColor }">↗</span></div>
                 <div v-if="page.courses[0]" class="mt-4 overflow-hidden rounded-2xl bg-canvas">
                   <img v-if="page.courses[0].thumbnailUrl" :src="page.courses[0].thumbnailUrl" :alt="page.courses[0].title + ' thumbnail'" class="h-44 w-full object-cover sm:h-52" />
@@ -96,7 +108,7 @@ onMounted(async () => {
         <section id="courses" class="mx-auto max-w-7xl px-4 py-14 sm:px-6 sm:py-20 lg:px-8">
           <div class="flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p class="text-xs font-bold uppercase tracking-[0.18em]" :style="{ color: page.site.brandColor }">Course catalogue</p><h2 class="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Find your next course.</h2><p class="mt-3 max-w-2xl text-sm leading-6 text-muted">Browse programmes published by {{ page.site.displayName }}. Create a learner account to enrol and check out.</p></div><span class="w-fit rounded-full bg-canvas px-3 py-2 text-xs font-semibold text-muted">{{ page.courses.length }} available</span></div>
           <div v-if="page.courses.length" class="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            <article v-for="course in page.courses" :key="course.id" class="group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-line bg-white transition hover:-translate-y-1 hover:shadow-xl hover:shadow-ink/5">
+            <article v-for="course in page.courses" :key="course.id" class="public-site__course-card group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-line bg-white transition hover:-translate-y-1 hover:shadow-xl hover:shadow-ink/5">
               <img v-if="course.thumbnailUrl" :src="course.thumbnailUrl" :alt="course.title + ' thumbnail'" class="h-48 w-full object-cover" loading="lazy" />
               <div v-else class="grid h-48 place-items-center text-5xl font-black text-white" :style="{ background: 'linear-gradient(135deg, ' + page.site.brandColor + ', ' + page.site.accentColor + ')' }">{{ course.title.slice(0,1).toUpperCase() }}</div>
               <div class="flex flex-1 flex-col p-5"><div class="flex items-start justify-between gap-3"><h3 class="text-lg font-semibold leading-6">{{ course.title }}</h3><span class="shrink-0 rounded-lg bg-canvas px-2.5 py-1.5 text-xs font-bold">{{ formatPrice(course.priceInPaise, course.currency) }}</span></div><p class="mt-3 line-clamp-3 flex-1 text-sm leading-6 text-muted">{{ course.description || 'Explore this programme from ' + page.site.displayName + '.' }}</p><NuxtLink :to="courseAction(course.id)" class="mt-5 flex w-full items-center justify-center rounded-xl px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90" :style="{ backgroundColor: page.site.brandColor }">{{ course.priceInPaise ? 'Enrol & pay securely' : 'Enrol for free' }} <span class="ml-2">→</span></NuxtLink></div>
@@ -109,3 +121,71 @@ onMounted(async () => {
     </template>
   </div>
 </template>
+
+
+<style>
+.public-site { font-family: var(--site-font, Inter, ui-sans-serif, system-ui, sans-serif); }
+.public-site__feature-panel, .public-site__course-card, .public-site__header { transition: box-shadow 180ms ease, background-color 180ms ease, border-color 180ms ease; }
+
+.public-site--layout-centered .public-site__hero-inner {
+  grid-template-columns: minmax(0, 1fr) !important;
+  text-align: center;
+}
+.public-site--layout-centered .public-site__hero-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.public-site--layout-centered .public-site__feature-wrap {
+  max-width: 42rem;
+  margin-inline: auto;
+}
+.public-site--layout-editorial .public-site__hero-copy h1 {
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 500;
+  letter-spacing: -0.035em;
+  line-height: 1.08;
+}
+.public-site--layout-editorial .public-site__feature-panel,
+.public-site--layout-editorial .public-site__course-card {
+  border-radius: 0.85rem;
+}
+.public-site--layout-immersive .public-site__hero-inner {
+  min-height: 42rem;
+}
+.public-site--layout-immersive .public-site__hero-copy h1 {
+  font-size: clamp(2.8rem, 5.5vw, 5.3rem);
+}
+
+.public-site--effect-glass .public-site__header {
+  background: rgba(255,255,255,.72);
+  backdrop-filter: blur(22px);
+}
+.public-site--effect-glass .public-site__feature-panel {
+  background: rgba(255,255,255,.76);
+  border-color: rgba(255,255,255,.65);
+  backdrop-filter: blur(22px);
+  box-shadow: 0 22px 70px rgba(15,23,42,.19);
+}
+.public-site--effect-glass .public-site__course-card {
+  background: rgba(255,255,255,.82);
+  backdrop-filter: blur(14px);
+}
+.public-site--effect-gradient .public-site__hero-overlay {
+  background-image:
+    radial-gradient(circle at 88% 8%, color-mix(in srgb, var(--site-accent) 72%, transparent), transparent 36%),
+    linear-gradient(105deg, color-mix(in srgb, var(--site-brand) 94%, transparent) 0%, color-mix(in srgb, var(--site-brand) 68%, transparent) 50%, #101827e8 100%) !important;
+}
+.public-site--effect-glow .public-site__feature-panel {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--site-accent) 22%, transparent), 0 20px 70px color-mix(in srgb, var(--site-brand) 23%, transparent);
+}
+.public-site--effect-glow .public-site__course-card:hover {
+  box-shadow: 0 0 34px color-mix(in srgb, var(--site-accent) 24%, transparent);
+}
+@media (max-width: 639px) {
+  .public-site--layout-immersive .public-site__hero-inner { min-height: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .public-site__feature-panel, .public-site__course-card, .public-site__header { transition: none; }
+}
+</style>

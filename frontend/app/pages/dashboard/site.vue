@@ -22,6 +22,9 @@ const site = ref<SiteSettings>({
   tagline: 'Practical learning, built around you.',
   about: '',
   theme: 'ocean',
+  fontFamily: 'sans',
+  layoutStyle: 'split',
+  visualEffect: 'none',
   brandColor: '#2563eb',
   accentColor: '#14b8a6',
   logoUrl: '',
@@ -35,7 +38,42 @@ const presets = [
   { id: 'sunset', name: 'Sunset', brand: '#c2410c', accent: '#db2777', description: 'Warm and creative' },
   { id: 'midnight', name: 'Midnight', brand: '#7c3aed', accent: '#38bdf8', description: 'Bold and modern' },
   { id: 'minimal', name: 'Minimal', brand: '#18181b', accent: '#64748b', description: 'Quiet and understated' },
+  { id: 'aurora', name: 'Aurora', brand: '#0f766e', accent: '#a3e635', description: 'Fresh colour with vivid highlights' },
+  { id: 'lavender', name: 'Lavender', brand: '#6d28d9', accent: '#f0abfc', description: 'Soft and premium' },
+  { id: 'monochrome', name: 'Monochrome', brand: '#27272a', accent: '#a1a1aa', description: 'Modern black and white' },
+  { id: 'coral', name: 'Coral', brand: '#be123c', accent: '#fb923c', description: 'Friendly and energetic' },
 ]
+const layoutOptions = [
+  { id: 'split', name: 'Split hero', description: 'Editorial copy beside a featured course' },
+  { id: 'centered', name: 'Centered', description: 'A focused, centered landing page' },
+  { id: 'editorial', name: 'Editorial', description: 'Elegant type and generous spacing' },
+  { id: 'immersive', name: 'Immersive', description: 'A larger hero with a cinematic feel' },
+]
+const effectOptions = [
+  { id: 'none', name: 'Clean', description: 'Crisp surfaces with minimal decoration' },
+  { id: 'glass', name: 'Glass', description: 'Translucent cards and backdrop blur' },
+  { id: 'gradient', name: 'Gradient', description: 'Layered colour and soft transitions' },
+  { id: 'glow', name: 'Soft glow', description: 'Subtle colour glow around key surfaces' },
+]
+const fontOptions = [
+  { id: 'sans', name: 'Modern sans', sample: 'Aa · The quick brown fox' },
+  { id: 'rounded', name: 'Friendly rounded', sample: 'Aa · The quick brown fox' },
+  { id: 'serif', name: 'Classic serif', sample: 'Aa · The quick brown fox' },
+  { id: 'editorial', name: 'Editorial serif', sample: 'Aa · The quick brown fox' },
+  { id: 'mono', name: 'Technical mono', sample: 'Aa · The quick brown fox' },
+]
+const fontStacks: Record<string, string> = {
+  sans: 'Inter, "Avenir Next", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif',
+  rounded: '"Trebuchet MS", "Arial Rounded MT Bold", ui-sans-serif, sans-serif',
+  serif: 'Georgia, "Times New Roman", serif',
+  editorial: '"Palatino Linotype", Palatino, Georgia, serif',
+  mono: '"SFMono-Regular", Consolas, "Liberation Mono", monospace',
+}
+const previewClasses = computed(() => [
+  'site-preview--' + (site.value.layoutStyle || 'split'),
+  'site-preview-effect--' + (site.value.visualEffect || 'none'),
+])
+const previewFontStack = computed(() => fontStacks[site.value.fontFamily] || fontStacks.sans)
 const canConfigure = computed(() => ['owner', 'admin'].includes(currentUser.value?.role ?? ''))
 const publicUrl = computed(() => publicPath.value || (companySlug.value ? '/p/' + companySlug.value : '/'))
 
@@ -147,6 +185,33 @@ onMounted(() => { void load() })
               <div class="flex items-center gap-3 rounded-xl border border-line p-3"><input v-model="site.brandColor" type="color" aria-label="Brand colour" class="h-10 w-12 cursor-pointer rounded-lg border-0 bg-transparent" /><div class="min-w-0"><p class="text-sm font-semibold">Brand colour</p><p class="font-mono text-xs text-muted">{{ site.brandColor }}</p></div></div>
               <div class="flex items-center gap-3 rounded-xl border border-line p-3"><input v-model="site.accentColor" type="color" aria-label="Accent colour" class="h-10 w-12 cursor-pointer rounded-lg border-0 bg-transparent" /><div class="min-w-0"><p class="text-sm font-semibold">Accent colour</p><p class="font-mono text-xs text-muted">{{ site.accentColor }}</p></div></div>
             </div>
+            <div class="mt-6 border-t border-line pt-5">
+              <p class="text-sm font-semibold">Page design and effects</p>
+              <p class="mt-1 text-xs leading-5 text-muted">These settings update the preview instantly and are stored with your public page.</p>
+              <div class="mt-4 grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label for="layoutStyle" class="mb-2 block text-sm font-semibold">Layout</label>
+                  <select id="layoutStyle" v-model="site.layoutStyle" class="w-full rounded-xl border border-line bg-white px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10">
+                    <option v-for="layout in layoutOptions" :key="layout.id" :value="layout.id">{{ layout.name }}</option>
+                  </select>
+                  <p class="mt-1.5 text-xs leading-5 text-muted">{{ layoutOptions.find(item => item.id === site.layoutStyle)?.description }}</p>
+                </div>
+                <div>
+                  <label for="visualEffect" class="mb-2 block text-sm font-semibold">Visual effect</label>
+                  <select id="visualEffect" v-model="site.visualEffect" class="w-full rounded-xl border border-line bg-white px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10">
+                    <option v-for="effect in effectOptions" :key="effect.id" :value="effect.id">{{ effect.name }}</option>
+                  </select>
+                  <p class="mt-1.5 text-xs leading-5 text-muted">{{ effectOptions.find(item => item.id === site.visualEffect)?.description }}</p>
+                </div>
+                <div class="sm:col-span-2">
+                  <label for="fontFamily" class="mb-2 block text-sm font-semibold">Typography</label>
+                  <select id="fontFamily" v-model="site.fontFamily" class="w-full rounded-xl border border-line bg-white px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10">
+                    <option v-for="font in fontOptions" :key="font.id" :value="font.id">{{ font.name }}</option>
+                  </select>
+                  <p class="mt-2 rounded-xl border border-line bg-canvas px-4 py-3 text-base" :style="{ fontFamily: previewFontStack }">{{ fontOptions.find(item => item.id === site.fontFamily)?.sample }} — chosen typography preview</p>
+                </div>
+              </div>
+            </div>
           </section>
 
           <section class="rounded-2xl border border-line bg-white p-5 sm:p-6">
@@ -160,10 +225,10 @@ onMounted(() => { void load() })
 
         <aside class="xl:sticky xl:top-32">
           <div class="mb-3 flex items-center justify-between gap-3"><div><p class="text-xs font-bold uppercase tracking-[0.16em] text-brand">Live preview</p><h2 class="mt-1 text-lg font-semibold">Your public page</h2></div><span class="rounded-full bg-white px-3 py-1.5 text-[10px] font-semibold text-muted ring-1 ring-line">Preview</span></div>
-          <div class="overflow-hidden rounded-3xl border border-line bg-white shadow-xl shadow-ink/5">
-            <div class="relative flex min-h-52 flex-col justify-between overflow-hidden p-5 sm:p-7" :style="{ backgroundColor: site.brandColor, backgroundImage: site.heroImageUrl ? 'linear-gradient(110deg, rgba(10,10,20,.66), rgba(10,10,20,.12)), url(' + JSON.stringify(site.heroImageUrl) + ')' : undefined, backgroundSize: 'cover', backgroundPosition: 'center' }">
+          <div class="overflow-hidden rounded-3xl border border-line bg-white shadow-xl shadow-ink/5" :class="previewClasses" :style="{ fontFamily: previewFontStack }">
+            <div class="site-preview__hero relative flex min-h-52 flex-col justify-between overflow-hidden p-5 sm:p-7" :style="{ backgroundColor: site.brandColor, backgroundImage: site.heroImageUrl ? 'linear-gradient(110deg, rgba(10,10,20,.66), rgba(10,10,20,.12)), url(' + JSON.stringify(site.heroImageUrl) + ')' : undefined, backgroundSize: 'cover', backgroundPosition: 'center' }">
               <div class="relative flex items-center gap-3"><img v-if="site.logoUrl" :src="site.logoUrl" alt="Company logo" class="h-10 w-10 rounded-xl bg-white object-contain p-1" /><div v-else class="grid h-10 w-10 place-items-center rounded-xl bg-white/15 font-black text-white">{{ (site.displayName || currentCompany?.name || 'C').slice(0,1).toUpperCase() }}</div><p class="truncate text-sm font-semibold text-white">{{ site.displayName || currentCompany?.name || 'Your company' }}</p></div>
-              <div class="relative mt-8"><p class="text-[10px] font-bold uppercase tracking-[0.2em] text-white/70">Learn with us</p><h3 class="mt-2 max-w-md text-2xl font-semibold leading-tight text-white">{{ site.headline || 'Your company learning hub' }}</h3><p class="mt-2 text-sm leading-6 text-white/80">{{ site.tagline || 'Practical learning, built around you.' }}</p><span class="mt-5 inline-flex rounded-xl px-4 py-2.5 text-xs font-semibold text-white" :style="{ backgroundColor: site.accentColor }">Explore courses</span></div>
+              <div class="site-preview__hero-copy relative mt-8"><p class="text-[10px] font-bold uppercase tracking-[0.2em] text-white/70">Learn with us</p><h3 class="mt-2 max-w-md text-2xl font-semibold leading-tight text-white">{{ site.headline || 'Your company learning hub' }}</h3><p class="mt-2 text-sm leading-6 text-white/80">{{ site.tagline || 'Practical learning, built around you.' }}</p><span class="mt-5 inline-flex rounded-xl px-4 py-2.5 text-xs font-semibold text-white" :style="{ backgroundColor: site.accentColor }">Explore courses</span></div>
             </div>
             <div class="p-5 sm:p-6"><div class="flex items-end justify-between gap-3"><div><p class="text-[10px] font-bold uppercase tracking-[0.16em]" :style="{ color: site.brandColor }">Course catalogue</p><h3 class="mt-1 text-lg font-semibold">Learn something new</h3></div><span class="text-[10px] text-muted">Published courses</span></div>
               <p v-if="site.about" class="mt-3 line-clamp-3 text-xs leading-5 text-muted">{{ site.about }}</p>
@@ -177,3 +242,21 @@ onMounted(() => { void load() })
     </main>
   </div>
 </template>
+
+
+<style>
+.site-preview__hero { transition: min-height 180ms ease, background-position 180ms ease; }
+.site-preview--centered .site-preview__hero { text-align: center; }
+.site-preview--centered .site-preview__hero-copy { display: flex; flex-direction: column; align-items: center; }
+.site-preview--centered .site-preview__hero-copy h3 { margin-inline: auto; }
+.site-preview--editorial .site-preview__hero { min-height: 19rem; }
+.site-preview--editorial .site-preview__hero-copy h3 { font-family: Georgia, "Times New Roman", serif; letter-spacing: -0.025em; }
+.site-preview--immersive .site-preview__hero { min-height: 25rem; }
+.site-preview-effect--glass .site-preview__hero + div { background: rgba(255,255,255,.76); backdrop-filter: blur(16px); }
+.site-preview-effect--glass .site-preview__hero { box-shadow: inset 0 0 0 1px rgba(255,255,255,.25); }
+.site-preview-effect--gradient .site-preview__hero { background-image: radial-gradient(circle at 85% 12%, rgba(255,255,255,.28), transparent 36%), linear-gradient(135deg, var(--preview-brand, #2563eb), #111827) !important; }
+.site-preview-effect--glow { box-shadow: 0 18px 50px rgba(99,91,223,.15); }
+@media (prefers-reduced-motion: reduce) {
+  .site-preview__hero { transition: none; }
+}
+</style>
