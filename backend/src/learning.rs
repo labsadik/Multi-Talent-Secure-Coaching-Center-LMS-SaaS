@@ -295,6 +295,20 @@ pub async fn create_subject(
         return Err(AppError::BadRequest("invalid subject title, slug, description, or order"));
     }
 
+    let subjects = state.db.collection::<Document>("subjects");
+    if subjects
+        .find_one(doc! {
+            "companyId": auth.company_id.clone(),
+            "courseId": course_id.clone(),
+            "slug": &slug,
+            "deletedAt": { "$exists": false },
+        })
+        .await?
+        .is_some()
+    {
+        return Err(AppError::Conflict("subject slug is already in use in this course"));
+    }
+
     let id = ObjectId::new();
     let now = DateTime::now();
     let document = doc! {
@@ -310,9 +324,7 @@ pub async fn create_subject(
         "createdAt": now,
         "updatedAt": now,
     };
-    state
-        .db
-        .collection::<Document>("subjects")
+    subjects
         .insert_one(document.clone())
         .await
         .map_err(AppError::from_mongo)?;
