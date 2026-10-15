@@ -19,6 +19,25 @@ pub async fn ensure_indexes(db: &Database) -> mongodb::error::Result<()> {
     let lesson_progress: Collection<mongodb::bson::Document> = db.collection("lesson_progress");
     let subscription_orders: Collection<mongodb::bson::Document> = db.collection("subscription_orders");
     let subscription_payments: Collection<mongodb::bson::Document> = db.collection("subscription_payments");
+    let refresh_sessions: Collection<mongodb::bson::Document> = db.collection("refresh_sessions");
+
+    create_index(
+        &refresh_sessions,
+        IndexModel::builder()
+            .keys(doc! { "tokenHash": 1 })
+            .options(IndexOptions::builder().unique(true).build())
+            .build(),
+    )
+    .await?;
+
+    create_index(
+        &refresh_sessions,
+        IndexModel::builder()
+            .keys(doc! { "expiresAt": 1 })
+            .options(IndexOptions::builder().expire_after(std::time::Duration::ZERO).build())
+            .build(),
+    )
+    .await?;
 
     create_index(
         &companies,

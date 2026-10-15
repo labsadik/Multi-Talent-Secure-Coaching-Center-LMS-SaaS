@@ -1,9 +1,11 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use argon2::{
-    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
+    password_hash::{rand_core::{OsRng, RngCore}, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
 };
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use sha2::{Digest, Sha256};
 use axum::{
     extract::{FromRequestParts, State},
     http::{header, request::Parts},
@@ -151,14 +153,71 @@ pub struct PublicUser {
     pub role: String,
 }
 
+const REFRESH_TTL_SECONDS: u64 = 30 * 24 * 60 * 60;
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthResponse {
     pub access_token: String,
+    pub refresh_token: String,
     pub token_type: &'static str,
     pub expires_in: u64,
+    pub refresh_expires_in: u64,
     pub user: PublicUser,
     pub company: PublicCompany,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RefreshRequest {
+    pub refresh_token: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LogoutRequest {
+    pub refresh_token: String,
+}
+
+fn refresh_token_hash(token: &str) -> String {
+    hex::encode(Sha256::digest(token.as_bytes()))
+}
+
+fn generate_refresh_token() -> String {
+    let mut bytes = [0_u8; 32];
+    OsRng.fill_bytes(&mut bytes);
+    URL_SAFE_NO_PAD.encode(bytes)
+}
+
+async fn create_refresh_session(
+    state: &AppState,
+    user_id: &ObjectId,
+    company_id: &ObjectId,
+) -> AppResult<String> {
+    let token = generate_refresh_token();
+    let now = DateTime::now();
+    let expires_at = DateTime::from_millis(
+        now.timestamp_millis().saturating_add((REFRESH_TTL_SECONDS as i64) * 1000),
+    );
+    state
+        .db
+        .collection::<mongodb::bson::Document>("refresh_sessions")
+        .insert_one(doc! {
+            "_id": ObjectId::new(),
+            "tokenHash": refresh_token_hash(&token),
+            "userId": user_id.clone(),
+            "companyId": company_id.clone(),
+            "createdAt": now,
+            "expiresAt": expires_at,
+        })
+        .await
+        .map_err(AppError::from_mongo)?;
+    Ok(token)
+}
+
+fn valid_refresh_token(token: &str) -> bool {
+    (40..=64).contains(&token.len())
+        && token.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
 }
 
 pub async fn register(
@@ -231,12 +290,15 @@ pub async fn register(
     }
 
     let token = issue_access_token(&state, &user_id, &company_id, "owner")?;
+    let refresh_token = create_refresh_session(&state, &user_id, &company_id).await?;
     Ok((
         axum::http::StatusCode::CREATED,
         Json(AuthResponse {
             access_token: token,
+            refresh_token,
             token_type: "Bearer",
             expires_in: state.settings.jwt_ttl_seconds,
+            refresh_expires_in: REFRESH_TTL_SECONDS,
             user: PublicUser {
                 id: user_id.to_hex(),
                 name,
@@ -308,12 +370,15 @@ pub async fn register_learner(
         .map_err(AppError::from_mongo)?;
 
     let token = issue_access_token(&state, &user_id, &company_id, "learner")?;
+    let refresh_token = create_refresh_session(&state, &user_id, &company_id).await?;
     Ok((
         axum::http::StatusCode::CREATED,
         Json(AuthResponse {
             access_token: token,
+            refresh_token,
             token_type: "Bearer",
             expires_in: state.settings.jwt_ttl_seconds,
+            refresh_expires_in: REFRESH_TTL_SECONDS,
             user: PublicUser {
                 id: user_id.to_hex(),
                 name,
@@ -382,8 +447,10 @@ pub async fn login(
     let token = issue_access_token(&state, &user_id, &company_id, &role)?;
     Ok(Json(AuthResponse {
         access_token: token,
+        refresh_token: input.refresh_token,
         token_type: "Bearer",
         expires_in: state.settings.jwt_ttl_seconds,
+        refresh_expires_in: REFRESH_TTL_SECONDS,
         user: PublicUser {
             id: user_id.to_hex(),
             name: user.get_str("name").unwrap_or_default().to_owned(),
@@ -396,6 +463,115 @@ pub async fn login(
             slug: company.get_str("slug").unwrap_or_default().to_owned(),
         },
     }))
+}
+
+pub async fn refresh(
+    State(state): State<AppState>,
+    Json(input): Json<RefreshRequest>,
+) -> AppResult<Json<AuthResponse>> {
+    if !valid_refresh_token(&input.refresh_token) {
+        return Err(AppError::Unauthorized);
+    }
+
+    let token_hash = refresh_token_hash(&input.refresh_token);
+    let now = DateTime::now();
+    let sessions = state.db.collection::<mongodb::bson::Document>("refresh_sessions");
+    let filter = doc! {
+        "tokenHash": &token_hash,
+        "expiresAt": { "$gt": now.clone() },
+        "revokedAt": { "$exists": false },
+    };
+    let session = sessions
+        .find_one(filter.clone())
+        .await?
+        .ok_or(AppError::Unauthorized)?;
+
+    let user_id = session
+        .get_object_id("userId")
+        .map_err(|_| AppError::Unauthorized)?
+        .to_owned();
+    let company_id = session
+        .get_object_id("companyId")
+        .map_err(|_| AppError::Unauthorized)?
+        .to_owned();
+    let company = require_active_company(&state.db, &company_id).await?;
+    let user = state
+        .db
+        .collection::<mongodb::bson::Document>("users")
+        .find_one(doc! {
+            "_id": user_id.clone(),
+            "companyId": company_id.clone(),
+            "status": "active",
+        })
+        .await?
+        .ok_or(AppError::Unauthorized)?;
+    let role = user
+        .get_str("role")
+        .map_err(|_| AppError::Unauthorized)?
+        .to_owned();
+    if !matches!(role.as_str(), "owner" | "admin" | "instructor" | "learner") {
+        return Err(AppError::Unauthorized);
+    }
+
+    // Keep the opaque session credential stable to avoid races between parallel API calls.
+    // MongoDB stores only its hash; use slides the inactivity window and logout revokes it.
+    let new_expires_at = DateTime::from_millis(
+        now.timestamp_millis().saturating_add((REFRESH_TTL_SECONDS as i64) * 1000),
+    );
+    let refreshed = sessions
+        .update_one(
+            filter,
+            doc! {
+                "$set": {
+                    "lastUsedAt": DateTime::now(),
+                    "expiresAt": new_expires_at,
+                }
+            },
+        )
+        .await?;
+    if refreshed.matched_count != 1 {
+        return Err(AppError::Unauthorized);
+    }
+
+    let token = issue_access_token(&state, &user_id, &company_id, &role)?;
+    Ok(Json(AuthResponse {
+        access_token: token,
+        refresh_token: input.refresh_token,
+        token_type: "Bearer",
+        expires_in: state.settings.jwt_ttl_seconds,
+        refresh_expires_in: REFRESH_TTL_SECONDS,
+        user: PublicUser {
+            id: user_id.to_hex(),
+            name: user.get_str("name").unwrap_or_default().to_owned(),
+            email: user.get_str("email").unwrap_or_default().to_owned(),
+            role,
+        },
+        company: PublicCompany {
+            id: company_id.to_hex(),
+            name: company.get_str("name").unwrap_or_default().to_owned(),
+            slug: company.get_str("slug").unwrap_or_default().to_owned(),
+        },
+    }))
+}
+pub async fn logout(
+    State(state): State<AppState>,
+    Json(input): Json<LogoutRequest>,
+) -> AppResult<axum::http::StatusCode> {
+    if valid_refresh_token(&input.refresh_token) {
+        state
+            .db
+            .collection::<mongodb::bson::Document>("refresh_sessions")
+            .update_one(
+                doc! {
+                    "tokenHash": refresh_token_hash(&input.refresh_token),
+                    "revokedAt": { "$exists": false },
+                },
+                doc! { "$set": { "revokedAt": DateTime::now() } },
+            )
+            .await?;
+    }
+    // Logout is intentionally idempotent: callers do not learn whether a token existed.
+    Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
 pub async fn me(

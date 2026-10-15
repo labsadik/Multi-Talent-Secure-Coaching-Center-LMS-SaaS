@@ -8,6 +8,8 @@ This is the Rust backend foundation for the multi-tenant Newage LMS SaaS. The Nu
 - Centralized configuration from process environment variables and a local `.env` via dotenvy. Process environment variables take precedence.
 - MongoDB connection pooling and unique indexes for company slugs, company-scoped users/course slugs, learning content, enrollments, payments, and subscriptions.
 - Company-owner and learner registration, Argon2 password hashing, tenant-scoped login, short-lived JWT access tokens with issuer/audience validation, and database revalidation of the user's active status and current role on authenticated requests.
+- Opaque refresh sessions with SHA-256 hash-only storage, 30-day sliding inactivity expiry, TTL cleanup, explicit logout revocation, and HttpOnly-cookie handling through the Nuxt BFF.
+- Opaque, 256-bit refresh-session credentials with SHA-256 hash-only storage, 30-day sliding inactivity expiry, TTL cleanup, explicit logout revocation, and server-side HttpOnly-cookie handling in the Nuxt BFF.
 - Tenant-aware course create/list/publish, subject/topic/lesson creation and discovery, preview-only lesson listings for non-enrolled learners, and learner progress/completion summaries.
 - Tenant owner/admin company-user listing, creation, role updates, disable/enable workflows, and active learner quota checks.
 - Bunny Storage topic-scoped file uploads with MIME/signature/size validation and authenticated downloads; Bunny Stream per-course collections, short-lived TUS upload tickets, encoding-status synchronization, and signed playback access.
@@ -58,7 +60,7 @@ Optional provider configuration must be supplied in matching pairs:
 
 - `GET /` — service identity.
 - `GET /health/live` and `GET /health/ready` — liveness and MongoDB readiness.
-- `POST /api/v1/auth/register`, `POST /api/v1/auth/register-learner`, `POST /api/v1/auth/login`, `GET /api/v1/auth/me` — identity and authentication.
+- `POST /api/v1/auth/register`, `POST /api/v1/auth/register-learner`, `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout`, `GET /api/v1/auth/me` — identity and authentication.
 - `GET/POST /api/v1/courses`, `POST /api/v1/courses/{course_id}/publish` — tenant-scoped course workflows.
 - `GET/POST /api/v1/courses/{course_id}/subjects`, `GET/POST /api/v1/subjects/{subject_id}/topics`, `GET/POST /api/v1/topics/{topic_id}/lessons` — learning content.
 - `GET/POST /api/v1/company/users` and `PATCH /api/v1/company/users/{user_id}` — company user management.
@@ -76,3 +78,10 @@ Registration JSON fields: `companyName`, `companySlug`, `name`, `email`, `passwo
 - Configure TLS at a trusted reverse proxy/load balancer. The current rate limiter is in-memory and per process; deploy a shared rate-limit store or edge gateway before horizontally scaling or public production launch.
 - Course payment amounts must come from server-side database records. Success depends on verified payment signatures/webhooks and idempotent server-side state transitions, never frontend redirects alone.
 - Quota checks currently use count-then-write patterns. Add transaction/atomic enforcement before relying on caps as a hard commercial entitlement under concurrent requests.
+
+
+## Refresh sessions and frontend integration
+
+Login and registration responses include an opaque refresh credential for server-to-server/session management. The Nuxt BFF keeps both the access JWT and refresh credential in HttpOnly, SameSite=Lax cookies; browser JavaScript receives only the public user/company profile. The backend stores only the SHA-256 digest of refresh credentials in the refresh_sessions collection, with unique-token and TTL indexes. The 15-minute (configurable JWT_TTL_SECONDS) access JWT is renewed when needed. Refresh activity extends a 30-day inactivity window; POST /api/v1/auth/logout revokes the refresh session. Do not expose the refresh credential or call the server session endpoints from an untrusted cross-origin form.
+
+Test session restoration, access expiry, explicit logout, and revoked-token rejection with the Nuxt BFF as part of release testing. The backend smoke script validates refresh and logout against a disposable MongoDB.

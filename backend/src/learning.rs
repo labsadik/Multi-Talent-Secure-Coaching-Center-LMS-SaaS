@@ -439,20 +439,28 @@ pub async fn create_lesson(
     }
 
     if let Some(asset_id) = &media_asset_id {
-        let asset_type = if lesson_type == "video" { "video" } else { "file" };
+        // PDF files and images are both valid file lesson attachments. Video lessons
+        // may only reference a ready Bunny Stream video asset.
+        let asset_type_filter = if lesson_type == "video" {
+            doc! { "assetType": "video" }
+        } else {
+            doc! { "assetType": { "$in": ["file", "image"] } }
+        };
+        let mut asset_filter = doc! {
+            "_id": asset_id.clone(),
+            "companyId": auth.company_id.clone(),
+            "courseId": course_id.clone(),
+            "subjectId": subject_id.clone(),
+            "topicId": topic_id.clone(),
+            "status": "ready",
+            "deletedAt": { "$exists": false },
+        };
+        asset_filter.extend(asset_type_filter);
+
         let asset = state
             .db
             .collection::<Document>("assets")
-            .find_one(doc! {
-                "_id": asset_id.clone(),
-                "companyId": auth.company_id.clone(),
-                "courseId": course_id.clone(),
-                "subjectId": subject_id.clone(),
-                "topicId": topic_id.clone(),
-                "assetType": asset_type,
-                "status": "ready",
-                "deletedAt": { "$exists": false },
-            })
+            .find_one(asset_filter)
             .await?
             .ok_or(AppError::BadRequest("media asset does not belong to this topic or is not ready"))?;
         let _ = asset;

@@ -89,7 +89,15 @@ payload="$(jq -n --arg slug "$slug_a" --arg email "$email_a" --arg password "$pa
 http 200 "$BASE_URL/api/v1/auth/login" -H 'Content-Type: application/json' --data "$payload"
 cp "$TMP_DIR/body" "$TMP_DIR/login-a.json"
 token_a="$(jq -er '.accessToken | select(type == "string" and length > 0)' "$TMP_DIR/login-a.json")"
-assert_json "$TMP_DIR/login-a.json" '.user.role == "owner"' "company A login response is invalid"
+refresh_a="$(jq -er '.refreshToken | select(type == "string" and length >= 40)' "$TMP_DIR/login-a.json")"
+assert_json "$TMP_DIR/login-a.json" '.user.role == "owner" and .refreshExpiresIn >= 86400' "company A login response is invalid"
+
+# Refresh renews the access token while retaining the same opaque session credential.
+payload="$(jq -n --arg refreshToken "$refresh_a" '{refreshToken:$refreshToken}')"
+http 200 "$BASE_URL/api/v1/auth/refresh" -H 'Content-Type: application/json' --data "$payload"
+cp "$TMP_DIR/body" "$TMP_DIR/refresh-a.json"
+token_a="$(jq -er '.accessToken | select(type == "string" and length > 0)' "$TMP_DIR/refresh-a.json")"
+jq -e --arg token "$refresh_a" '.refreshToken == $token' "$TMP_DIR/refresh-a.json" >/dev/null || fail "refresh token changed unexpectedly"
 
 payload="$(jq -n --arg slug "$slug_b" --arg email "$email_b" --arg password "$password" '{companySlug:$slug,email:$email,password:$password}')"
 http 200 "$BASE_URL/api/v1/auth/login" -H 'Content-Type: application/json' --data "$payload"
@@ -137,4 +145,8 @@ http 403 "$BASE_URL/api/v1/courses" -H "Authorization: Bearer $learner_token" -H
 cp "$TMP_DIR/body" "$TMP_DIR/learner-forbidden.json"
 assert_json "$TMP_DIR/learner-forbidden.json" '.error.code == "forbidden"' "learner was allowed to create a course"
 
-printf 'PASS: health, readiness, security headers, auth guard, registration/login, learner RBAC, course lifecycle, and tenant isolation.\n'
+payload="$(jq -n --arg refreshToken "$refresh_a" '{refreshToken:$refreshToken}')"
+http 204 "$BASE_URL/api/v1/auth/logout" -H 'Content-Type: application/json' --data "$payload"
+http 401 "$BASE_URL/api/v1/auth/refresh" -H 'Content-Type: application/json' --data "$payload"
+
+printf 'PASS: health, readiness, security headers, auth guard, registration/login, refresh/logout, learner RBAC, course lifecycle, and tenant isolation.\n'
