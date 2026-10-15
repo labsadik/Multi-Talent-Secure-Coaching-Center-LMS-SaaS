@@ -100,7 +100,7 @@ assert_json "$TMP_DIR/login-b.json" '.user.role == "owner"' "company B login res
 
 http 200 "$BASE_URL/api/v1/auth/me" -H "Authorization: Bearer $token_a"
 cp "$TMP_DIR/body" "$TMP_DIR/me-a.json"
-assert_json "$TMP_DIR/me-a.json" --arg slug "$slug_a" '.company.slug == $slug and .user.role == "owner"' "authenticated identity does not match company A"
+jq -e --arg slug "$slug_a" '.company.slug == $slug and .user.role == "owner"' "$TMP_DIR/me-a.json" >/dev/null || fail "authenticated identity does not match company A"
 
 payload="$(jq -n --arg slug "smoke-course-$suffix" '{title:"Tenant Isolation Smoke Course",slug:$slug,description:"Automated API smoke test",priceInPaise:0}')"
 http 201 "$BASE_URL/api/v1/courses" -H "Authorization: Bearer $token_a" -H 'Content-Type: application/json' --data "$payload"
@@ -118,13 +118,13 @@ cp "$TMP_DIR/body" "$TMP_DIR/published.json"
 assert_json "$TMP_DIR/published.json" '.status == "published" and .id != null' "course publish failed for its owning tenant"
 
 http 200 "$BASE_URL/api/v1/courses" -H "Authorization: Bearer $token_b"
-cp "$TMP_DIR/courses-b.json" "$TMP_DIR/body"
+cp "$TMP_DIR/body" "$TMP_DIR/courses-b.json"
 if jq -e --arg id "$course_id" 'any(.[]; .id == $id)' "$TMP_DIR/courses-b.json" >/dev/null; then
   fail "company B can see company A's course"
 fi
 
 http 200 "$BASE_URL/api/v1/courses" -H "Authorization: Bearer $token_a"
-cp "$TMP_DIR/courses-a.json" "$TMP_DIR/body"
+cp "$TMP_DIR/body" "$TMP_DIR/courses-a.json"
 jq -e --arg id "$course_id" 'any(.[]; .id == $id and .status == "published")' "$TMP_DIR/courses-a.json" >/dev/null || fail "company A cannot see its own published course"
 
 payload="$(jq -n --arg slug "$slug_a" --arg email "$learner_email" --arg password "$password" '{companySlug:$slug,name:"Smoke Test Learner",email:$email,password:$password}')"
@@ -135,7 +135,7 @@ assert_json "$TMP_DIR/learner.json" '.user.role == "learner"' "learner registrat
 
 payload="$(jq -n --arg slug "learner-must-not-create-$suffix" '{title:"Learner Must Not Create",slug:$slug,priceInPaise:0}')"
 http 403 "$BASE_URL/api/v1/courses" -H "Authorization: Bearer $learner_token" -H 'Content-Type: application/json' --data "$payload"
-cp "$TMP_DIR/learner-forbidden.json" "$TMP_DIR/body"
+cp "$TMP_DIR/body" "$TMP_DIR/learner-forbidden.json"
 assert_json "$TMP_DIR/learner-forbidden.json" '.error.code == "forbidden"' "learner was allowed to create a course"
 
 printf 'PASS: health, readiness, security headers, auth guard, registration/login, learner RBAC, course lifecycle, and tenant isolation.\n'
