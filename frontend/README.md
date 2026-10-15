@@ -1,85 +1,41 @@
-# Newage frontend
+# Frontend
 
-Nuxt 4 + Vue 3 + Tailwind CSS 4 frontend for the Newage LMS API. Server API routes form a same-origin backend-for-frontend (BFF), so access and refresh credentials are never returned to client-side JavaScript.
+The Newage frontend is built with Nuxt 4, Vue 3, TypeScript, and Tailwind CSS 4. Nuxt server routes act as a same-origin backend-for-frontend (BFF), keeping access and refresh credentials in server-managed HttpOnly cookies.
 
 ## Requirements
 
-- Node.js 22.12 or newer
-- npm 11 recommended
-- The Rust API and its MongoDB database running locally
+- Node.js 22.12 or newer.
+- npm 11 recommended.
+- The Rust API and MongoDB must be running before you test authenticated or data-backed features.
 
-## Run locally on Windows PowerShell
+## Run locally
 
-From the repository root:
+From the frontend directory, create the local environment file if it does not exist, install dependencies, and start Nuxt:
 
-    cd frontend
     Copy-Item .env.example .env
-    npm install --global npm@11
     npm install
     npm run dev
 
-Open http://localhost:3000. Keep the Rust API running at http://127.0.0.1:8080 in another terminal.
+Open http://localhost:3000. The frontend uses NUXT_API_INTERNAL_BASE to reach the Rust API. The example value points to http://127.0.0.1:8080.
 
-If npm 10.9.x fails during dependency installation with "Cannot read properties of null (reading 'edgesOut')", update npm to version 11 and retry installation.
+If the API is hosted at another address, update NUXT_API_INTERNAL_BASE in frontend/.env and restart Nuxt. Keep this setting server-only: do not rename it to use the NUXT_PUBLIC_ prefix, and never place database, JWT, encryption, Bunny, or Razorpay secrets in the frontend environment.
 
-The server-side API origin is NUXT_API_INTERNAL_BASE in frontend/.env. It is intentionally not prefixed with NUXT_PUBLIC_: the backend hostname is private Nuxt server configuration. The backend CORS_ALLOWED_ORIGINS should include the exact frontend origin for other browser integrations, but the main frontend-to-backend calls are server-side through the BFF.
+## Main areas
 
-## Available pages
+- Workspace dashboard and course management.
+- Public company page and theme editor.
+- Learner course catalogue, enrolment, and progress.
+- Company users, roles, and account access.
+- Company-specific course payment settings.
 
-- / — public product landing page
-- /register — creates a company workspace and owner account
-- /login — sign in for a workspace member
-- /learn/register — create a learner account within an existing workspace
-- /dashboard — workspace overview with visible quick links for course management, public page/theme, payments, and people
-- /dashboard/site — company public-page editor, theme presets, brand/accent colours, logo/banner URLs, publication switch, live preview, and public-page link
-- /p/:companySlug — public company storefront with its own branding and published course catalogue; free and paid enrolment CTAs
-- /dashboard/courses/:courseId — nested curriculum builder: Subject → Part → Chapter → Chapter part → video/text/PDF/image lessons; edit/archive, thumbnail controls, and topic asset library
-- /dashboard/learn — learner enrolments, course discovery, Razorpay checkout, and progress (public paid-course links continue to checkout after sign-up)
-- /dashboard/learn — learner enrolments, course discovery, checkout, and progress
-- /dashboard/users — company member listing, invitations, roles, and disable/reactivate controls
-- /dashboard/settings — company-specific Razorpay credentials for selling published courses
+## Development checks
 
-## Commands
+Run these commands from the frontend directory:
 
-    npm run dev
     npm run typecheck
     npm run build
     npm run preview
 
-## Remember-me session design
+Use npm run preview to serve the production build locally. For production hosting, deploy the Nuxt server output to a Node.js-compatible runtime; this app requires server-side routes and should not be deployed as a static-only website.
 
-1. Login, owner registration, and learner registration are sent to Nuxt server endpoints, not directly to the Rust API from the browser.
-2. Nuxt stores the short-lived access JWT and opaque refresh-session credential in HttpOnly, SameSite=Lax cookies. Cookies are Secure on HTTPS and are scoped to /. Tokens are omitted from JavaScript-readable API responses and are never stored in localStorage.
-3. The Rust API stores only a SHA-256 hash of the opaque refresh credential. Refresh requests issue a new short-lived access JWT and slide the inactivity expiration of the session. Concurrent requests share the same opaque session credential to avoid refresh-token rotation races.
-4. On a page refresh or navigation, the auth middleware calls /api/session/me to restore the current user from the cookie-backed API session. If the access JWT has expired, Nuxt refreshes it on the server and retries the original API request.
-5. Logout calls the server endpoint, revokes the refresh session in MongoDB, clears both cookies, and clears the in-memory UI state. Inactive sessions expire after 30 days; normal use renews the inactivity window.
-
-This is safer than localStorage bearer-token persistence and keeps tokens away from client-side JavaScript. As with any cookie-authenticated app, deploy over HTTPS, keep same-origin mutation checks enabled, and perform an XSS/security review before launch. For stronger production isolation, a dedicated BFF deployment and centralized session-management policy can be used.
-
-Only public page configuration belongs in browser bundles. Never put MongoDB URIs, JWT signing secrets, Razorpay secrets, Bunny API keys, or APP_ENCRYPTION_KEY_BASE64 in Nuxt public runtime config or any variable prefixed with NUXT_PUBLIC_.
-
-## Product coverage and provider setup
-
-The company dashboard now exposes the public storefront and theme editor at /dashboard/site. Owners/admins can publish each company's page at /p/<company-slug>, choose a theme/palette, edit the copy, and configure logo/banner image URLs. Draft courses are not shown publicly. The course builder supports Subject → Part (topic) → Chapter → Chapter part → Lesson, and includes video upload, image/PDF uploads, a media asset library, lesson thumbnails, and course-cover assignment. Set BUNNY_CDN_HOSTNAME to show public URLs for uploaded Bunny Storage images/files in the asset library; otherwise HTTPS image URLs can be supplied manually. Archiving hides content from active listings while retaining historical enrolment/payment records.
-
-Paid course enrolment CTAs use the company's Razorpay configuration and backend order/payment-verification endpoints. New learners arrive with the company's slug prefilled and continue to their selected course after registration. Provider features require working Bunny/Razorpay credentials, webhook setup, and sandbox round-trip verification before production use.
-
-Paid course checkout uses each company's own Razorpay account. The backend derives the order amount from the company's published course and grants course access only after the company's payment signature and captured payment are verified. Newage SaaS plan checkout is not part of the workspace or learner experience.
-
-
-## Company-specific login and media
-
-### Company-specific sign-in
-
-A workspace has a dedicated employee login URL:
-
-`/workspace/<company-slug>/login`
-
-Owners/admins can copy it from **Dashboard → People → Employee sign-in panel**. This URL fixes the workspace slug for login, so employees don't select another company in the login form. Password authentication uses the existing `users` and `companies` documents and only accepts an active user whose `companyId` matches the selected company. No collection or schema migration is required.
-
-### Uploading images, PDFs, and videos
-
-- Image/PDF bytes are sent through the same-origin Nuxt server endpoint to the Rust API; the Rust API uploads to Bunny Storage using `BUNNY_STORAGE_ZONE`, `BUNNY_STORAGE_API_KEY`, and `BUNNY_STORAGE_HOST`. The browser never receives the Storage API key.
-- Videos use a server-minted, time-limited TUS upload ticket. The browser uploads the selected file directly to Bunny Stream with a short-lived signature; `BUNNY_STREAM_LIBRARY_ID`, `BUNNY_STREAM_API_KEY`, `BUNNY_TUS_ENDPOINT`, and playback token settings stay in `backend/.env`.
-- Choose a chapter part in the course content builder before uploading. Storage paths use company, course, subject, course-part, chapter, chapter-part, and then lesson ID folders. When a ready asset is attached to a lesson, a storage file is copied into the lesson folder and the previous object is retained as a compatibility copy so old thumbnails and public CDN URLs continue working. Stream videos are reassigned to a collection named for the company/course/subject/chapter/chapter-part/lesson IDs; Stream collections are flat groups rather than actual nested folders.
-- Upload progress is shown in the course builder. The success message appears only after the API/provider confirms storage. Confirm that the relevant Bunny values are configured in `backend/.env`, then restart the Rust API after env changes.
+See [DEPLOYMENT.md](../DEPLOYMENT.md) for production hosting and environment requirements.
