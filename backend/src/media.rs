@@ -709,3 +709,75 @@ pub async fn download_asset(
         .map_err(|_| AppError::Internal)
 }
 
+
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TopicAssetResponse {
+    pub id: String,
+    pub title: String,
+    pub asset_type: String,
+    pub provider: String,
+    pub content_type: Option<String>,
+    pub status: String,
+    pub size_bytes: i64,
+    pub duration_seconds: Option<i64>,
+    pub created_at_ms: i64,
+    pub public_url: Option<String>,
+}
+
+pub async fn list_topic_assets(
+    State(state): State<AppState>,
+    Path(topic_id): Path<String>,
+    auth: AuthUser,
+) -> AppResult<Json<Vec<TopicAssetResponse>>> {
+    if !auth.can_manage_content() {
+        return Err(AppError::Forbidden);
+    }
+    let topic_id = parse_path_id(&topic_id)?;
+    let _ = topic_context(&state, &auth.company_id, &topic_id).await?;
+    let cursor = state.db.collection::<Document>("assets")
+        .find(doc! {
+            "companyId": auth.company_id.clone(),
+            "topicId": topic_id,
+            "deletedAt": { "$exists": false },
+        })
+        .sort(doc! { "createdAt": -1 })
+        .limit(200)
+        .await?;
+    let documents: Vec<Document> = cursor.try_collect().await.map_err(AppError::from_mongo)?;
+    let cdn_host = state.settings.bunny_cdn_hostname.as_deref()
+        .map(|host| host.trim().trim_end_matches('/'))
+        .filter(|host| !host.is_empty());
+    let assets = documents.into_iter().filter_map(|document| {
+        let id = document.get_object_id("_id").ok()?.to_hex();
+        let asset_type = document.get_str("assetType").unwrap_or("asset").to_owned();
+        let provider = document.get_str("provider").unwrap_or("unknown").to_owned();
+        let title = document.get_str("title").ok().map(str::to_owned).unwrap_or_else(|| {
+            document.get_str("storagePath").ok()
+                .and_then(|path| path.rsplit('/').next())
+                .unwrap_or("Uploaded asset")
+                .to_owned()
+        });
+        let storage_path = document.get_str("storagePath").ok();
+        let public_url = match (cdn_host, storage_path) {
+            (Some(host), Some(path)) if path.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'/' || b == b'-' || b == b'_' || b == b'.') => {
+                Some(format!("https://{host}/{}", path.trim_start_matches('/')))
+            }
+            _ => None,
+        };
+        Some(TopicAssetResponse {
+            id,
+            title,
+            asset_type,
+            provider,
+            content_type: document.get_str("contentType").ok().map(str::to_owned),
+            status: document.get_str("status").unwrap_or("unknown").to_owned(),
+            size_bytes: document.get_i64("sizeBytes").unwrap_or(0),
+            duration_seconds: document.get_i64("durationSeconds").ok(),
+            created_at_ms: document.get_datetime("createdAt").map(|date| date.timestamp_millis()).unwrap_or_default(),
+            public_url,
+        })
+    }).collect();
+    Ok(Json(assets))
+}
