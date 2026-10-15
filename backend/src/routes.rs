@@ -1,6 +1,6 @@
 use axum::{
     http::StatusCode,
-    routing::{get, patch, post, put},
+    routing::{delete, get, patch, post, put},
     Json, Router,
 };
 use serde_json::{json, Value};
@@ -32,6 +32,10 @@ pub fn router(state: AppState) -> Router {
             get(courses::list_courses).post(courses::create_course),
         )
         .route(
+            "/api/v1/courses/{course_id}",
+            patch(courses::update_course).delete(courses::delete_course),
+        )
+        .route(
             "/api/v1/courses/{course_id}/publish",
             post(courses::publish_course),
         )
@@ -40,12 +44,24 @@ pub fn router(state: AppState) -> Router {
             get(learning::list_subjects).post(learning::create_subject),
         )
         .route(
+            "/api/v1/subjects/{subject_id}",
+            patch(learning::update_subject).delete(learning::delete_subject),
+        )
+        .route(
             "/api/v1/subjects/{subject_id}/topics",
             get(learning::list_topics).post(learning::create_topic),
         )
         .route(
+            "/api/v1/topics/{topic_id}",
+            patch(learning::update_topic).delete(learning::delete_topic),
+        )
+        .route(
             "/api/v1/topics/{topic_id}/lessons",
             get(learning::list_lessons).post(learning::create_lesson),
+        )
+        .route(
+            "/api/v1/lessons/{lesson_id}",
+            patch(learning::update_lesson).delete(learning::delete_lesson),
         )
         .route(
             "/api/v1/topics/{topic_id}/video-upload-ticket",
