@@ -1,0 +1,43 @@
+name: Nuxt frontend checks
+
+on:
+  push:
+    branches:
+      - main
+      - "backend/**"
+      - "frontend/**"
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend.yml"
+      - ".gitignore"
+      - "README.md"
+  pull_request:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend.yml"
+      - ".gitignore"
+      - "README.md"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Typecheck and build Nuxt frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm install --no-audit --no-fund
+      - name: Typecheck
+        working-directory: frontend
+        run: npm run typecheck
+      - name: Build production bundle
+        working-directory: frontend
+        run: npm run build

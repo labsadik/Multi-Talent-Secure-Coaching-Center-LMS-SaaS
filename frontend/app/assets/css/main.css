@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #19213a;
+  --color-muted: #6d758b;
+  --color-brand: #635bdf;
+  --color-brand-dark: #4f46c9;
+  --color-brand-soft: #eeedff;
+  --color-mint: #d7f7d2;
+  --color-canvas: #f7f8fc;
+  --color-line: #e8eaf2;
+  --font-sans: "Inter", "Avenir Next", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+:root {
+  color-scheme: light;
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+  background: var(--color-canvas);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 6rem;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  color: #19213a;
+  background: #d7f7d2;
+}
+
+:focus-visible {
+  outline: 3px solid #8b83ff;
+  outline-offset: 3px;
+}
+
+.page-grid {
+  background-image: linear-gradient(to right, rgba(99, 91, 223, 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(99, 91, 223, 0.045) 1px, transparent 1px);
+  background-size: 34px 34px;
+}
