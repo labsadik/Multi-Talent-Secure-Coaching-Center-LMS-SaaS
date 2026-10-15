@@ -143,6 +143,10 @@ pub fn router(state: AppState) -> Router {
             "/api/v1/webhooks/platform-razorpay",
             post(platform_billing::razorpay_webhook),
         )
+        .route(
+            "/api/v1/webhooks/bunny-stream",
+            post(media::bunny_stream_webhook),
+        )
         .fallback(not_found)
         .with_state(state)
 }
