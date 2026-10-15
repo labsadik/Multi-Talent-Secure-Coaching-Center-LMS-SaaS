@@ -25,8 +25,8 @@ function courseAction(courseId: string) {
   const slug = page.value?.company.slug || companySlug.value
   if (currentUser.value && currentCompanyMatches.value) {
     return currentUser.value.role === 'learner'
-      ? '/dashboard/learn?checkoutCourse=' + encodeURIComponent(courseId)
-      : '/dashboard'
+      ? '/workspace/' + encodeURIComponent(page.value?.company.slug || companySlug.value) + '/dashboard/learn?checkoutCourse=' + encodeURIComponent(courseId)
+      : '/workspace/' + encodeURIComponent(page.value?.company.slug || companySlug.value) + '/dashboard'
   }
   // Public visitors must sign in through this tenant's login. The login page
   // carries the selected course forward to either checkout or learner signup.
