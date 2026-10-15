@@ -38,8 +38,19 @@ impl RateLimiter {
                 !events.is_empty()
             });
         }
+        let key = (ip, bucket);
+        if !entries.contains_key(&key) && entries.len() >= 50_000 {
+            let oldest = entries
+                .iter()
+                .filter_map(|(key, events)| events.front().map(|event| (*key, *event)))
+                .min_by_key(|(_, event)| *event)
+                .map(|(key, _)| key);
+            if let Some(oldest) = oldest {
+                entries.remove(&oldest);
+            }
+        }
 
-        let events = entries.entry((ip, bucket)).or_default();
+        let events = entries.entry(key).or_default();
         events.retain(|event| now.saturating_duration_since(*event) < window);
         if events.len() >= limit {
             return false;

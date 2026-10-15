@@ -68,7 +68,7 @@ impl Settings {
         // Existing process environment variables take precedence over values in .env.
         let _ = dotenvy::dotenv();
 
-        let app_env = optional("APP_ENV").unwrap_or_else(|| "development".to_owned());
+        let app_env = required("APP_ENV")?;
         ensure!(
             matches!(app_env.as_str(), "development" | "test" | "production"),
             "APP_ENV must be development, test, or production"
@@ -255,6 +255,10 @@ impl Settings {
             ensure!(
                 cors_allowed_origins.iter().all(|origin| origin.starts_with("https://")),
                 "production CORS origins must use HTTPS"
+            );
+            ensure!(
+                jwt_issuer.starts_with("https://"),
+                "JWT_ISSUER must use HTTPS in production"
             );
             if razorpay_key_id.is_some() {
                 ensure!(

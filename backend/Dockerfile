@@ -10,6 +10,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --uid 10001 --create-home appuser
 WORKDIR /app
+ENV APP_ENV=production HOST=0.0.0.0 PORT=8080
 COPY --from=builder /app/target/release/newage-api /usr/local/bin/newage-api
 USER 10001:10001
 EXPOSE 8080

@@ -51,7 +51,7 @@ async fn main() -> anyhow::Result<()> {
 
     let mut mongo_options = ClientOptions::parse(&settings.mongodb_uri)
         .await
-        .context("could not parse MONGODB_URI")?;
+        .map_err(|_| anyhow::anyhow!("could not parse MONGODB_URI; verify its syntax without exposing credentials"))?;
     mongo_options.app_name = Some("newage-rust-api".to_owned());
     mongo_options.max_pool_size = Some(settings.mongodb_max_pool_size);
 
@@ -95,7 +95,6 @@ async fn main() -> anyhow::Result<()> {
             Method::OPTIONS,
         ])
         .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE])
-        .allow_credentials(true)
         .max_age(Duration::from_secs(600));
 
     let app = routes::router(state)
@@ -120,12 +119,34 @@ async fn main() -> anyhow::Result<()> {
     );
 
     axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
-        .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
-            tracing::info!("shutdown signal received");
-        })
+        .with_graceful_shutdown(shutdown_signal())
         .await
         .context("HTTP server failed")?;
 
     Ok(())
+}
+
+
+async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        let ctrl_c = async {
+            let _ = tokio::signal::ctrl_c().await;
+        };
+        let mut terminate = tokio::signal::unix::signal(
+            tokio::signal::unix::SignalKind::terminate(),
+        )
+        .expect("install SIGTERM handler");
+        tokio::select! {
+            _ = ctrl_c => {},
+            _ = terminate.recv() => {},
+        }
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+    }
+
+    tracing::info!("shutdown signal received");
 }
