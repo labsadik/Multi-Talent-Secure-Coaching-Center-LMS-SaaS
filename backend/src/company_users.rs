@@ -98,10 +98,10 @@ pub async fn list_company_users(
     require_user_manager(&auth)?;
     require_active_company(&state.db, &auth.company_id).await?;
 
-    let filter = if auth.role == "instructor" {
-        doc! { "companyId": auth.company_id.clone(), "role": "learner" }
-    } else {
+    let filter = if can_manage_all_users(&auth.role) {
         doc! { "companyId": auth.company_id.clone() }
+    } else {
+        doc! { "companyId": auth.company_id.clone(), "role": "learner" }
     };
     let cursor = state
         .db
