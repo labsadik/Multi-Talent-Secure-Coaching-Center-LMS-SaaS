@@ -13,6 +13,10 @@ use crate::{
     state::AppState,
 };
 
+fn default_font_family() -> String { "sans".to_owned() }
+fn default_layout_style() -> String { "split".to_owned() }
+fn default_visual_effect() -> String { "none".to_owned() }
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateSiteRequest {
@@ -21,6 +25,12 @@ pub struct UpdateSiteRequest {
     pub tagline: String,
     pub about: String,
     pub theme: String,
+    #[serde(default = "default_font_family")]
+    pub font_family: String,
+    #[serde(default = "default_layout_style")]
+    pub layout_style: String,
+    #[serde(default = "default_visual_effect")]
+    pub visual_effect: String,
     pub brand_color: String,
     pub accent_color: String,
     pub logo_url: Option<String>,
@@ -37,6 +47,9 @@ struct SiteView {
     tagline: String,
     about: String,
     theme: String,
+    font_family: String,
+    layout_style: String,
+    visual_effect: String,
     brand_color: String,
     accent_color: String,
     logo_url: Option<String>,
@@ -53,6 +66,9 @@ impl SiteView {
             tagline: "Practical learning, built around you.".to_owned(),
             about: String::new(),
             theme: "ocean".to_owned(),
+            font_family: default_font_family(),
+            layout_style: default_layout_style(),
+            visual_effect: default_visual_effect(),
             brand_color: "#2563eb".to_owned(),
             accent_color: "#14b8a6".to_owned(),
             logo_url: None,
@@ -70,6 +86,9 @@ impl SiteView {
             tagline: document.get_str("tagline").unwrap_or(&default.tagline).to_owned(),
             about: document.get_str("about").unwrap_or_default().to_owned(),
             theme: document.get_str("theme").unwrap_or(&default.theme).to_owned(),
+            font_family: document.get_str("fontFamily").unwrap_or(&default.font_family).to_owned(),
+            layout_style: document.get_str("layoutStyle").unwrap_or(&default.layout_style).to_owned(),
+            visual_effect: document.get_str("visualEffect").unwrap_or(&default.visual_effect).to_owned(),
             brand_color: document.get_str("brandColor").unwrap_or(&default.brand_color).to_owned(),
             accent_color: document.get_str("accentColor").unwrap_or(&default.accent_color).to_owned(),
             logo_url: document.get_str("logoUrl").ok().map(str::to_owned),
@@ -120,7 +139,10 @@ fn validate(input: &UpdateSiteRequest) -> AppResult<()> {
         || !(2..=160).contains(&headline.chars().count())
         || tagline.chars().count() > 240
         || about.chars().count() > 10_000
-        || !matches!(input.theme.as_str(), "ocean" | "forest" | "sunset" | "midnight" | "minimal")
+        || !matches!(input.theme.as_str(), "ocean" | "forest" | "sunset" | "midnight" | "minimal" | "aurora" | "lavender" | "monochrome" | "coral")
+        || !matches!(input.font_family.as_str(), "sans" | "rounded" | "serif" | "editorial" | "mono")
+        || !matches!(input.layout_style.as_str(), "split" | "centered" | "editorial" | "immersive")
+        || !matches!(input.visual_effect.as_str(), "none" | "glass" | "gradient" | "glow")
         || !is_hex_color(&input.brand_color)
         || !is_hex_color(&input.accent_color)
         || !valid_image_url(&input.logo_url)
@@ -177,6 +199,9 @@ pub async fn update_company_site(
         "tagline": input.tagline.trim(),
         "about": input.about.trim(),
         "theme": &input.theme,
+        "fontFamily": &input.font_family,
+        "layoutStyle": &input.layout_style,
+        "visualEffect": &input.visual_effect,
         "brandColor": input.brand_color.to_ascii_lowercase(),
         "accentColor": input.accent_color.to_ascii_lowercase(),
         "logoUrl": input.logo_url.as_deref().map(str::trim).filter(|v| !v.is_empty()),
