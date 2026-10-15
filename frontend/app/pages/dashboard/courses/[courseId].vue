@@ -14,7 +14,6 @@ interface ChapterView extends ContentItem {
 interface SubjectView extends ContentItem {
   chapters: ChapterView[]
 }
-type VideoStatusReply = { status?: string; encodeProgress?: number; bunnyStatus?: number }
 
 const route = useRoute()
 const {
@@ -162,7 +161,7 @@ function editLesson(chapter: ChapterView, lesson: ContentItem) {
   lessonType.value = (lesson.lessonType || 'text') as 'text' | 'video' | 'file'
   lessonContent.value = lesson.content || ''
   lessonAssetId.value = lesson.mediaAssetId || ''
-  lessonDuration.value = Number(lesson.durationSeconds || 0)
+  lessonDuration.value = Math.ceil(Number(lesson.durationSeconds || 0) / 60)
   lessonPreview.value = Boolean(lesson.isPreview)
   expandedChapterId.value = chapter.id
 }
@@ -302,7 +301,7 @@ async function saveLesson(chapter: ChapterView) {
       lessonType: lessonType.value,
       content: lessonType.value === 'text' ? lessonContent.value.trim() : undefined,
       mediaAssetId: lessonType.value === 'text' ? undefined : lessonAssetId.value || undefined,
-      durationSeconds: Math.max(0, Math.round(Number(lessonDuration.value || 0))),
+      durationSeconds: Math.max(0, Math.round(Number(lessonDuration.value || 0) * 60)),
       isPreview: lessonPreview.value,
       sortOrder: editingLesson.value?.sortOrder ?? chapter.lessons.length,
     }
@@ -391,6 +390,7 @@ async function uploadVideo(chapter: ChapterView, event: Event) {
     })
     await loadOutline(false)
     successMessage.value = 'Upload finished. Bunny Stream is processing the video; it can be attached after it becomes Ready.'
+    void refreshAllVideoStatuses()
   } catch (error) {
     pageError.value = apiErrorMessage(error, 'Video upload failed. Confirm Bunny Stream settings and retry.')
   } finally {
