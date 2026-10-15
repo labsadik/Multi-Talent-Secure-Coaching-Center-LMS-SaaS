@@ -80,10 +80,29 @@ impl FromRequestParts<AppState> for AuthUser {
             return Err(AppError::Unauthorized);
         }
 
+        // Re-check membership and role so disabled users and stale role tokens are revoked.
+        require_active_company(&state.db, &company_id).await?;
+        let stored_user = state
+            .db
+            .collection::<mongodb::bson::Document>("users")
+            .find_one(doc! {
+                "_id": user_id.clone(),
+                "companyId": company_id.clone(),
+                "status": "active",
+            })
+            .await?
+            .ok_or(AppError::Unauthorized)?;
+        let stored_role = stored_user
+            .get_str("role")
+            .map_err(|_| AppError::Unauthorized)?;
+        if stored_role != claims.role {
+            return Err(AppError::Unauthorized);
+        }
+
         Ok(Self {
             user_id,
             company_id,
-            role: claims.role,
+            role: stored_role.to_owned(),
         })
     }
 }
