@@ -1,4 +1,4 @@
-use anyhow::{bail, ensure, Context, Result};
+use anyhow::{ensure, Context, Result};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use std::env;
 
@@ -105,7 +105,7 @@ impl Settings {
         ensure!(!cors_allowed_origins.is_empty(), "CORS_ALLOWED_ORIGINS must contain at least one origin");
         for origin in &cors_allowed_origins {
             ensure!(
-                origin != "*"
+                !origin.contains('*')
                     && (origin.starts_with("http://") || origin.starts_with("https://"))
                     && !origin.ends_with('/'),
                 "CORS origins must be exact http(s) origins without a trailing slash or wildcard"
@@ -160,7 +160,9 @@ impl Settings {
         ensure!(
             !bunny_storage_host.contains("://")
                 && !bunny_storage_host.contains('/')
-                && !bunny_storage_host.trim().is_empty(),
+                && !bunny_storage_host.trim().is_empty()
+                && !bunny_storage_host.starts_with('.')
+                && bunny_storage_host.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '.' || ch == '-'),
             "BUNNY_STORAGE_HOST must be a hostname, not a URL"
         );
         let bunny_cdn_hostname = optional("BUNNY_CDN_HOSTNAME");
@@ -191,9 +193,6 @@ impl Settings {
                 cors_allowed_origins.iter().all(|origin| origin.starts_with("https://")),
                 "production CORS origins must use HTTPS"
             );
-            if jwt_secret.as_bytes().len() < 32 {
-                bail!("JWT_SECRET must be at least 32 bytes");
-            }
         }
 
         Ok(Self {

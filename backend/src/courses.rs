@@ -1,6 +1,6 @@
 use axum::{extract::State, http::StatusCode, Json};
 use futures_util::TryStreamExt;
-use mongodb::bson::{doc, oid::ObjectId, DateTime, Document};
+use mongodb::bson::{doc, DateTime, Document};
 use serde::{Deserialize, Serialize};
 
 use crate::{

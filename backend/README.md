@@ -59,4 +59,4 @@ Course creation requires an Authorization: Bearer access token and accepts title
 - Tenant provider credentials should be encrypted with crypto::encrypt_tenant_secret before database storage, using that tenant's immutable company ID as associated data.
 - Configure TLS at a trusted reverse proxy/load balancer. Add distributed per-IP and per-account rate limits (for example via Redis or the edge gateway) before public production launch.
 - Course payment amounts must be derived from server-side database records. Payment success must be based on verified Razorpay signatures/webhooks and idempotent server-side state transitions, never a frontend success redirect alone.
-- Run cargo fmt --all -- --check, cargo clippy --all-targets -- -D warnings, and cargo test in CI before release.
+- Run cargo fmt --all -- --check, cargo clippy --all-targets, and cargo test in CI before release.

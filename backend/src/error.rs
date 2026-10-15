@@ -13,12 +13,10 @@ pub enum AppError {
     Unauthorized,
     #[error("forbidden")]
     Forbidden,
-    #[error("not found")]
-    NotFound,
     #[error("resource conflict")]
     Conflict(&'static str),
     #[error("service is not configured")]
-    ServiceUnavailable(&'static str),
+    ServiceUnavailable,
     #[error("database operation failed")]
     Database(#[from] mongodb::error::Error),
     #[error("upstream service request failed")]
@@ -43,9 +41,8 @@ impl IntoResponse for AppError {
             Self::BadRequest(message) => (StatusCode::BAD_REQUEST, "bad_request", *message),
             Self::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized", "Authentication is required"),
             Self::Forbidden => (StatusCode::FORBIDDEN, "forbidden", "Access is not allowed"),
-            Self::NotFound => (StatusCode::NOT_FOUND, "not_found", "Resource was not found"),
             Self::Conflict(message) => (StatusCode::CONFLICT, "conflict", *message),
-            Self::ServiceUnavailable(_) => (
+            Self::ServiceUnavailable => (
                 StatusCode::SERVICE_UNAVAILABLE,
                 "service_not_configured",
                 "A required service is not configured",

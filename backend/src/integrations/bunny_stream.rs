@@ -16,7 +16,7 @@ impl BunnyStream {
             client,
             library_id: settings
                 .bunny_stream_library_id
-                .ok_or(AppError::ServiceUnavailable("Bunny Stream"))?,
+                .ok_or(AppError::ServiceUnavailable)?,
             api_key: settings
                 .bunny_stream_api_key
                 .clone()
