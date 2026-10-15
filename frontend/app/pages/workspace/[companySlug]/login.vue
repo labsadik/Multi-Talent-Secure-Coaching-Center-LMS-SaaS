@@ -54,7 +54,6 @@ async function submitLogin() {
       </div>
     </div>
     <div v-if="errorMessage" role="alert" class="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700">{{ errorMessage }}</div>
-    <div v-if="errorMessage" role="alert" class="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700">{{ errorMessage }}</div>
 
     <form class="space-y-5" @submit.prevent="submitLogin">
       <div>
