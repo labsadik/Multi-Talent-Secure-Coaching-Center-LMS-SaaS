@@ -12,8 +12,11 @@ export default defineNuxtRouteMiddleware(async (to) => {
       // from the API must not masquerade as a signed-out user.
       if (status === 401 || status === 403) {
         clearSession()
+        const tenantMatch = to.path.match(/^\\/workspace\\/([a-z0-9]+(?:-[a-z0-9]+)*)\\/dashboard/)
         return navigateTo({
-          path: '/login',
+          path: tenantMatch?.[1]
+            ? '/workspace/' + encodeURIComponent(tenantMatch[1]) + '/login'
+            : '/login',
           query: { redirect: to.fullPath },
         })
       }
