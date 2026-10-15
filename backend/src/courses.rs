@@ -280,7 +280,7 @@ pub async fn delete_course(
     }
 
     // Keep enrolment and payment history while hiding the archived course hierarchy.
-    for collection in ["subjects", "topics", "lessons", "assets"] {
+    for collection in ["subjects", "topics", "chapters", "chapter_parts", "lessons", "assets"] {
         state.db.collection::<Document>(collection).update_many(
             doc! {
                 "companyId": auth.company_id.clone(),
