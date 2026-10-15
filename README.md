@@ -26,7 +26,7 @@ The script creates local `.env` files from the development examples when missing
 - Public page and theme editor: `/dashboard/site`
 - Public company page: `/p/<company-slug>` (publish the page in its editor)
 - Course curriculum and media asset library: open a course from the dashboard, then choose **Manage content**.
-- Company Razorpay/payment and plan settings: `/dashboard/settings`
+- Company-specific Razorpay and course payment settings: `/dashboard/settings`
 
 The course curriculum is organised as Subject → Part → Chapter → Chapter part → Lesson. Lessons can be text, video or file content; image/PDF/video assets are managed from the selected part's asset library.
 
