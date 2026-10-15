@@ -73,6 +73,7 @@ const pollingVideos = ref(false)
 const playbackLesson = ref<ContentItem | null>(null)
 const playback = ref<PlaybackInfo | null>(null)
 const playbackBusy = ref(false)
+const failedThumbnailIds = ref<string[]>([])
 const busyLessonId = ref('')
 
 function slugify(value: string) {
@@ -452,6 +453,11 @@ async function openLesson(lesson: ContentItem) {
     playbackLesson.value = null
   } finally { playbackBusy.value = false }
 }
+function markThumbnailFailed(lessonId: string) {
+  if (!failedThumbnailIds.value.includes(lessonId)) {
+    failedThumbnailIds.value = [...failedThumbnailIds.value, lessonId]
+  }
+}
 function protectedDownloadUrl(url: string) {
   return url.startsWith('/api/v1/')
     ? '/api/backend/' + url.replace(/^\/api\/v1\//, '')
@@ -549,7 +555,7 @@ onMounted(async () => {
                   <div v-if="chapter.lessons.length" class="divide-y divide-slate-100 rounded-xl border border-slate-100">
                     <article v-for="(lesson, lessonIndex) in chapter.lessons" :key="lesson.id" class="flex flex-wrap items-center gap-3 p-3 sm:gap-4">
                       <button type="button" class="group relative h-[76px] w-28 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 text-left shadow-sm transition hover:border-blue-400 hover:shadow-md sm:h-[88px] sm:w-36" :aria-label="'Open lesson ' + lesson.title" @click="openLesson(lesson)">
-                        <img v-if="lesson.thumbnailUrl" :src="protectedDownloadUrl(lesson.thumbnailUrl)" :alt="lesson.title + ' thumbnail'" loading="lazy" class="h-full w-full object-cover transition duration-200 group-hover:scale-105" />
+                        <img v-if="lesson.thumbnailUrl && !failedThumbnailIds.includes(lesson.id)" :src="protectedDownloadUrl(lesson.thumbnailUrl)" :alt="lesson.title + ' thumbnail'" loading="lazy" class="h-full w-full object-cover transition duration-200 group-hover:scale-105" @error="markThumbnailFailed(lesson.id)" />
                         <span v-else class="flex h-full w-full flex-col items-center justify-center gap-1 bg-gradient-to-br from-slate-100 to-slate-200 text-slate-600"><span class="text-xl font-bold">{{ lesson.lessonType === 'video' ? '▶' : lesson.lessonType === 'file' ? 'PDF' : 'Aa' }}</span><span class="text-[9px] font-semibold uppercase tracking-wider">{{ lesson.lessonType === 'video' ? 'Video' : lesson.lessonType === 'file' ? 'Document' : 'Lesson' }}</span></span>
                         <span v-if="lesson.lessonType === 'video'" class="absolute bottom-1.5 right-1.5 grid h-7 w-7 place-items-center rounded-full bg-slate-950/80 text-xs text-white">▶</span>
                       </button>
