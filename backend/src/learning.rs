@@ -495,3 +495,259 @@ pub async fn create_lesson(
     Ok((StatusCode::CREATED, Json(content_response(document)?)))
 }
 
+
+
+async fn archive_content_collection(
+    state: &AppState,
+    collection_name: &str,
+    filter: Document,
+    now: DateTime,
+) -> AppResult<()> {
+    state.db.collection::<Document>(collection_name).update_many(
+        filter,
+        doc! { "$set": {
+            "status": "archived",
+            "deletedAt": now,
+            "updatedAt": now,
+        } },
+    ).await?;
+    Ok(())
+}
+
+pub async fn update_subject(
+    State(state): State<AppState>,
+    Path(subject_id): Path<String>,
+    auth: AuthUser,
+    Json(input): Json<CreateSubjectRequest>,
+) -> AppResult<Json<ContentResponse>> {
+    if !auth.can_manage_content() { return Err(AppError::Forbidden); }
+    let subject_id = parse_id(&subject_id)?;
+    let subjects = state.db.collection::<Document>("subjects");
+    let filter = doc! {
+        "_id": subject_id.clone(),
+        "companyId": auth.company_id.clone(),
+        "deletedAt": { "$exists": false },
+    };
+    let current = subjects.find_one(filter.clone()).await?.ok_or(AppError::NotFound)?;
+    let course_id = current.get_object_id("courseId").map_err(|_| AppError::Internal)?.to_owned();
+    visible_course(&state, &auth.company_id, &course_id, true).await?;
+
+    let title = input.title.trim().to_owned();
+    let slug = input.slug.trim().to_ascii_lowercase();
+    let description = input.description.map(|value| value.trim().to_owned());
+    let sort_order = input.sort_order.unwrap_or(current.get_i32("sortOrder").unwrap_or(0));
+    if !valid_title_slug(&title, &slug) || !validate_optional_fields(&description, sort_order) {
+        return Err(AppError::BadRequest("invalid subject title, slug, description, or order"));
+    }
+    if subjects.find_one(doc! {
+        "companyId": auth.company_id.clone(), "courseId": course_id.clone(),
+        "slug": &slug, "_id": { "$ne": subject_id.clone() },
+        "deletedAt": { "$exists": false },
+    }).await?.is_some() {
+        return Err(AppError::Conflict("subject slug is already in use in this course"));
+    }
+
+    subjects.update_one(filter.clone(), doc! { "$set": {
+        "title": &title, "slug": &slug, "description": description,
+        "sortOrder": sort_order, "updatedAt": DateTime::now(),
+    } }).await?;
+    Ok(Json(content_response(subjects.find_one(filter).await?.ok_or(AppError::NotFound)?)?))
+}
+
+pub async fn delete_subject(
+    State(state): State<AppState>,
+    Path(subject_id): Path<String>,
+    auth: AuthUser,
+) -> AppResult<StatusCode> {
+    if !auth.can_manage_content() { return Err(AppError::Forbidden); }
+    let subject_id = parse_id(&subject_id)?;
+    let filter = doc! {
+        "_id": subject_id.clone(), "companyId": auth.company_id.clone(),
+        "deletedAt": { "$exists": false },
+    };
+    let subject = state.db.collection::<Document>("subjects")
+        .find_one(filter.clone()).await?.ok_or(AppError::NotFound)?;
+    let course_id = subject.get_object_id("courseId").map_err(|_| AppError::Internal)?.to_owned();
+    visible_course(&state, &auth.company_id, &course_id, true).await?;
+    let now = DateTime::now();
+    state.db.collection::<Document>("subjects").update_one(
+        filter, doc! { "$set": { "status": "archived", "deletedAt": now, "updatedAt": now } }
+    ).await?;
+    let child_filter = doc! {
+        "companyId": auth.company_id.clone(), "courseId": course_id.clone(),
+        "subjectId": subject_id.clone(), "deletedAt": { "$exists": false },
+    };
+    archive_content_collection(&state, "topics", child_filter.clone(), now).await?;
+    archive_content_collection(&state, "lessons", child_filter.clone(), now).await?;
+    archive_content_collection(&state, "assets", child_filter, now).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn update_topic(
+    State(state): State<AppState>,
+    Path(topic_id): Path<String>,
+    auth: AuthUser,
+    Json(input): Json<CreateTopicRequest>,
+) -> AppResult<Json<ContentResponse>> {
+    if !auth.can_manage_content() { return Err(AppError::Forbidden); }
+    let topic_id = parse_id(&topic_id)?;
+    let topics = state.db.collection::<Document>("topics");
+    let filter = doc! {
+        "_id": topic_id.clone(), "companyId": auth.company_id.clone(),
+        "deletedAt": { "$exists": false },
+    };
+    let current = topics.find_one(filter.clone()).await?.ok_or(AppError::NotFound)?;
+    let course_id = current.get_object_id("courseId").map_err(|_| AppError::Internal)?.to_owned();
+    let subject_id = current.get_object_id("subjectId").map_err(|_| AppError::Internal)?.to_owned();
+    visible_course(&state, &auth.company_id, &course_id, true).await?;
+
+    let title = input.title.trim().to_owned();
+    let slug = input.slug.trim().to_ascii_lowercase();
+    let description = input.description.map(|value| value.trim().to_owned());
+    let sort_order = input.sort_order.unwrap_or(current.get_i32("sortOrder").unwrap_or(0));
+    if !valid_title_slug(&title, &slug) || !validate_optional_fields(&description, sort_order) {
+        return Err(AppError::BadRequest("invalid topic title, slug, description, or order"));
+    }
+    if topics.find_one(doc! {
+        "companyId": auth.company_id.clone(), "subjectId": subject_id.clone(),
+        "slug": &slug, "_id": { "$ne": topic_id.clone() },
+        "deletedAt": { "$exists": false },
+    }).await?.is_some() {
+        return Err(AppError::Conflict("topic slug is already in use in this subject"));
+    }
+
+    topics.update_one(filter.clone(), doc! { "$set": {
+        "title": &title, "slug": &slug, "description": description,
+        "sortOrder": sort_order, "updatedAt": DateTime::now(),
+    } }).await?;
+    Ok(Json(content_response(topics.find_one(filter).await?.ok_or(AppError::NotFound)?)?))
+}
+
+pub async fn delete_topic(
+    State(state): State<AppState>,
+    Path(topic_id): Path<String>,
+    auth: AuthUser,
+) -> AppResult<StatusCode> {
+    if !auth.can_manage_content() { return Err(AppError::Forbidden); }
+    let topic_id = parse_id(&topic_id)?;
+    let filter = doc! {
+        "_id": topic_id.clone(), "companyId": auth.company_id.clone(),
+        "deletedAt": { "$exists": false },
+    };
+    let topic = state.db.collection::<Document>("topics")
+        .find_one(filter.clone()).await?.ok_or(AppError::NotFound)?;
+    let course_id = topic.get_object_id("courseId").map_err(|_| AppError::Internal)?.to_owned();
+    visible_course(&state, &auth.company_id, &course_id, true).await?;
+    let now = DateTime::now();
+    state.db.collection::<Document>("topics").update_one(
+        filter, doc! { "$set": { "status": "archived", "deletedAt": now, "updatedAt": now } }
+    ).await?;
+    let child_filter = doc! {
+        "companyId": auth.company_id.clone(), "courseId": course_id.clone(),
+        "topicId": topic_id.clone(), "deletedAt": { "$exists": false },
+    };
+    archive_content_collection(&state, "lessons", child_filter.clone(), now).await?;
+    archive_content_collection(&state, "assets", child_filter, now).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn update_lesson(
+    State(state): State<AppState>,
+    Path(lesson_id): Path<String>,
+    auth: AuthUser,
+    Json(input): Json<CreateLessonRequest>,
+) -> AppResult<Json<ContentResponse>> {
+    if !auth.can_manage_content() { return Err(AppError::Forbidden); }
+    let lesson_id = parse_id(&lesson_id)?;
+    let lessons = state.db.collection::<Document>("lessons");
+    let filter = doc! {
+        "_id": lesson_id.clone(), "companyId": auth.company_id.clone(),
+        "deletedAt": { "$exists": false },
+    };
+    let current = lessons.find_one(filter.clone()).await?.ok_or(AppError::NotFound)?;
+    let course_id = current.get_object_id("courseId").map_err(|_| AppError::Internal)?.to_owned();
+    let subject_id = current.get_object_id("subjectId").map_err(|_| AppError::Internal)?.to_owned();
+    let topic_id = current.get_object_id("topicId").map_err(|_| AppError::Internal)?.to_owned();
+    visible_course(&state, &auth.company_id, &course_id, true).await?;
+
+    let title = input.title.trim().to_owned();
+    let slug = input.slug.trim().to_ascii_lowercase();
+    let lesson_type = input.lesson_type.trim().to_ascii_lowercase();
+    let content = input.content.map(|value| value.trim().to_owned());
+    let duration_seconds = input.duration_seconds.unwrap_or(0);
+    let sort_order = input.sort_order.unwrap_or(current.get_i32("sortOrder").unwrap_or(0));
+    let media_asset_id = input.media_asset_id.as_deref().map(parse_id).transpose()?;
+    if !valid_title_slug(&title, &slug)
+        || !matches!(lesson_type.as_str(), "video" | "text" | "file")
+        || !(0..=86_400).contains(&duration_seconds)
+        || !(0..=1_000_000).contains(&sort_order)
+        || content.as_ref().is_some_and(|value| value.chars().count() > 50_000)
+    {
+        return Err(AppError::BadRequest("invalid lesson title, slug, type, content, duration, or order"));
+    }
+    match lesson_type.as_str() {
+        "text" if content.as_ref().is_none_or(|value| value.is_empty()) =>
+            return Err(AppError::BadRequest("text lessons require content")),
+        "text" if media_asset_id.is_some() =>
+            return Err(AppError::BadRequest("text lessons cannot attach a media asset")),
+        "video" | "file" if media_asset_id.is_none() =>
+            return Err(AppError::BadRequest("video and file lessons require a media asset")),
+        _ => {}
+    }
+    if let Some(asset_id) = &media_asset_id {
+        let asset_type_filter = if lesson_type == "video" {
+            doc! { "assetType": "video" }
+        } else {
+            doc! { "assetType": { "$in": ["file", "image"] } }
+        };
+        let mut asset_filter = doc! {
+            "_id": asset_id.clone(), "companyId": auth.company_id.clone(),
+            "courseId": course_id.clone(), "subjectId": subject_id.clone(),
+            "topicId": topic_id.clone(), "status": "ready",
+            "deletedAt": { "$exists": false },
+        };
+        asset_filter.extend(asset_type_filter);
+        if state.db.collection::<Document>("assets").find_one(asset_filter).await?.is_none() {
+            return Err(AppError::BadRequest("media asset does not belong to this topic or is not ready"));
+        }
+    }
+    if lessons.find_one(doc! {
+        "companyId": auth.company_id.clone(), "topicId": topic_id.clone(),
+        "slug": &slug, "_id": { "$ne": lesson_id.clone() },
+        "deletedAt": { "$exists": false },
+    }).await?.is_some() {
+        return Err(AppError::Conflict("lesson slug is already in use in this topic"));
+    }
+
+    lessons.update_one(filter.clone(), doc! { "$set": {
+        "title": &title, "slug": &slug, "lessonType": &lesson_type,
+        "content": content, "mediaAssetId": media_asset_id,
+        "durationSeconds": duration_seconds, "isPreview": input.is_preview.unwrap_or(false),
+        "sortOrder": sort_order, "updatedAt": DateTime::now(),
+    } }).await?;
+    Ok(Json(content_response(lessons.find_one(filter).await?.ok_or(AppError::NotFound)?)?))
+}
+
+pub async fn delete_lesson(
+    State(state): State<AppState>,
+    Path(lesson_id): Path<String>,
+    auth: AuthUser,
+) -> AppResult<StatusCode> {
+    if !auth.can_manage_content() { return Err(AppError::Forbidden); }
+    let lesson_id = parse_id(&lesson_id)?;
+    let filter = doc! {
+        "_id": lesson_id, "companyId": auth.company_id.clone(),
+        "deletedAt": { "$exists": false },
+    };
+    let lesson = state.db.collection::<Document>("lessons")
+        .find_one(filter.clone()).await?.ok_or(AppError::NotFound)?;
+    let course_id = lesson.get_object_id("courseId").map_err(|_| AppError::Internal)?.to_owned();
+    visible_course(&state, &auth.company_id, &course_id, true).await?;
+    let now = DateTime::now();
+    state.db.collection::<Document>("lessons").update_one(
+        filter, doc! { "$set": {
+            "status": "archived", "deletedAt": now, "updatedAt": now,
+        } },
+    ).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
