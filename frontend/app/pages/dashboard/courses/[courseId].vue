@@ -18,11 +18,11 @@ interface SubjectView extends ContentItem {
 const route = useRoute()
 const {
   currentUser, currentCompany,
-  getCourses, getSubjects, createSubject, updateSubject, deleteSubject,
-  getTopics, createTopic, updateTopic, deleteTopic,
-  getLessons, createLesson, updateLesson, deleteLesson,
+  getCourses, getSubjects, createSubject, updateSubject, deleteSubject, permanentlyDeleteSubject,
+  getTopics, createTopic, updateTopic, deleteTopic, permanentlyDeleteTopic,
+  getLessons, createLesson, updateLesson, deleteLesson, permanentlyDeleteLesson,
   getChapters, getChapterParts, getChapterPartLessons,
-  getTopicAssets, uploadAsset, createVideoTicket, refreshAssetStatus,
+  getTopicAssets, uploadAsset, createVideoTicket, archiveAsset, permanentlyDeleteAsset, refreshAssetStatus,
   getMyCourses, getPlayback, updateLessonProgress,
 } = useAuth()
 
@@ -120,6 +120,13 @@ function availableAssets(chapter: ChapterView) {
       ? asset.assetType === 'video'
       : asset.assetType === 'image' || asset.assetType === 'file'
   })
+}
+function selectedLessonAsset(chapter: ChapterView) {
+  return chapter.assets.find(asset => asset.id === lessonAssetId.value)
+}
+function lessonMediaDisplayName(file: File) {
+  const extension = file.name.includes('.') ? file.name.slice(file.name.lastIndexOf('.')) : ''
+  return (lessonTitle.value.trim() || file.name.replace(/\.[^.]+$/, '')) + extension
 }
 function resetLessonForm() {
   activeLessonChapterId.value = ''
@@ -262,6 +269,15 @@ async function removeSubject(subject: SubjectView) {
     await loadOutline(false)
   } catch (error) { pageError.value = apiErrorMessage(error, 'Subject could not be archived.') }
 }
+async function permanentlyRemoveSubject(subject: SubjectView) {
+  if (!import.meta.client || !window.confirm('Permanently delete "' + subject.title + '" and all its chapters, lessons and media? This cannot be undone. Enrollment/payment records are retained, but lesson progress for deleted lessons is removed.')) return
+  resetMessages()
+  try {
+    await permanentlyDeleteSubject(subject.id)
+    successMessage.value = 'Subject permanently deleted.'
+    await loadOutline(false)
+  } catch (error) { pageError.value = apiErrorMessage(error, 'Subject could not be permanently deleted.') }
+}
 function openChapterForm(subject: SubjectView) {
   cancelChapterForm()
   chapterFormSubjectId.value = subject.id
@@ -298,6 +314,17 @@ async function removeChapter(chapter: ChapterView) {
     successMessage.value = 'Chapter archived.'
     await loadOutline(false)
   } catch (error) { pageError.value = apiErrorMessage(error, 'Chapter could not be archived.') }
+}
+async function permanentlyRemoveChapter(chapter: ChapterView) {
+  if (!import.meta.client || !window.confirm('Permanently delete "' + chapter.title + '", its lessons and attached media? This cannot be undone. Enrollment/payment records are retained, but lesson progress for deleted lessons is removed.')) return
+  resetMessages()
+  try {
+    await permanentlyDeleteTopic(chapter.id)
+    if (expandedChapterId.value === chapter.id) expandedChapterId.value = ''
+    if (activeLessonChapterId.value === chapter.id) resetLessonForm()
+    successMessage.value = 'Chapter permanently deleted.'
+    await loadOutline(false)
+  } catch (error) { pageError.value = apiErrorMessage(error, 'Chapter could not be permanently deleted.') }
 }
 async function saveLesson(chapter: ChapterView) {
   resetMessages()
@@ -336,11 +363,40 @@ async function removeLesson(lesson: ContentItem) {
     await loadOutline(false)
   } catch (error) { pageError.value = apiErrorMessage(error, 'Lesson could not be archived.') }
 }
-async function uploadStorageFile(chapter: ChapterView, event: Event) {
+async function permanentlyRemoveLesson(lesson: ContentItem) {
+  if (!import.meta.client || !window.confirm('Permanently delete "' + lesson.title + '" and its attached media? This cannot be undone. Learner progress for this lesson will be removed.')) return
+  resetMessages()
+  try {
+    await permanentlyDeleteLesson(lesson.id)
+    successMessage.value = 'Lesson permanently deleted.'
+    await loadOutline(false)
+  } catch (error) { pageError.value = apiErrorMessage(error, 'Lesson could not be permanently deleted.') }
+}
+async function removeMediaAsset(asset: TopicAsset, permanently = false) {
+  if (!import.meta.client) return
+  const prompt = permanently
+    ? 'Permanently delete "' + asset.title + '" from Bunny and the media library? This cannot be undone.'
+    : 'Archive "' + asset.title + '"? It will no longer be available to attach to lessons.'
+  if (!window.confirm(prompt)) return
+  resetMessages()
+  try {
+    if (permanently) await permanentlyDeleteAsset(asset.id)
+    else await archiveAsset(asset.id)
+    successMessage.value = permanently ? 'Media permanently deleted.' : 'Media archived.'
+    await loadOutline(false)
+  } catch (error) {
+    pageError.value = apiErrorMessage(error, permanently ? 'Media could not be permanently deleted.' : 'Media could not be archived.')
+  }
+}
+async function uploadStorageFile(chapter: ChapterView, event: Event, insideLesson = false) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   input.value = ''
   if (!file) return
+  if (insideLesson && lessonTitle.value.trim().length < 2) {
+    pageError.value = 'Enter the lesson title first so the uploaded media is saved with that lesson name.'
+    return
+  }
   if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf'].includes(file.type)) {
     pageError.value = 'Choose a JPG, PNG, WebP, GIF image or PDF file.'
     return
@@ -350,17 +406,27 @@ async function uploadStorageFile(chapter: ChapterView, event: Event) {
     return
   }
   resetMessages()
-  uploadActivity.value = { chapterId: chapter.id, kind: 'file', filename: file.name }
+  uploadActivity.value = { chapterId: chapter.id, kind: 'file', filename: insideLesson ? lessonMediaDisplayName(file) : file.name }
   uploadProgress.value = 0
   try {
-    await uploadAsset(chapter.id, file, undefined, percent => { uploadProgress.value = percent })
-    successMessage.value = file.name + ' uploaded to Bunny Storage and is ready to attach.'
+    const result = await uploadAsset(
+      chapter.id, file, undefined, percent => { uploadProgress.value = percent },
+      insideLesson ? lessonMediaDisplayName(file) : undefined,
+    )
+    if (insideLesson) {
+      const id = String(result.assetId || '')
+      if (!id) throw new Error('Bunny Storage did not return the uploaded media ID.')
+      lessonAssetId.value = id
+    }
     await loadOutline(false)
+    successMessage.value = insideLesson
+      ? lessonMediaDisplayName(file) + ' is attached to this lesson form and ready. Save the lesson once to finish.'
+      : file.name + ' uploaded to Bunny Storage and is ready to attach.'
   } catch (error) {
     pageError.value = apiErrorMessage(error, 'File upload failed. Check Bunny Storage configuration and try again.')
   } finally { uploadActivity.value = null }
 }
-async function uploadVideo(chapter: ChapterView, event: Event) {
+async function uploadVideo(chapter: ChapterView, event: Event, insideLesson = false) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   input.value = ''
@@ -369,16 +435,24 @@ async function uploadVideo(chapter: ChapterView, event: Event) {
     pageError.value = 'Choose a video file for Bunny Stream.'
     return
   }
+  const videoTitle = insideLesson ? lessonTitle.value.trim() : file.name.replace(/\.[^.]+$/, '')
+  if (insideLesson && videoTitle.length < 2) {
+    pageError.value = 'Enter the lesson title first. Bunny Stream will use that title automatically.'
+    return
+  }
   resetMessages()
-  uploadActivity.value = { chapterId: chapter.id, kind: 'video', filename: file.name }
+  uploadActivity.value = { chapterId: chapter.id, kind: 'video', filename: videoTitle }
   uploadProgress.value = 0
+  let createdAssetId = ''
   try {
-    const ticket = await createVideoTicket(chapter.id, file.name.replace(/\.[^.]+$/, '')) as unknown as {
+    const ticket = await createVideoTicket(chapter.id, videoTitle) as unknown as {
       assetId: string
       status: string
       upload: { endpoint: string; videoId: string; libraryId: number; authorizationSignature: string; authorizationExpire: number }
     }
     if (!ticket.assetId || !ticket.upload?.endpoint) throw new Error('Bunny Stream did not return a valid upload ticket.')
+    createdAssetId = ticket.assetId
+    if (insideLesson) lessonAssetId.value = ticket.assetId
     const tusModule = await import('tus-js-client')
     await new Promise<void>((resolve, reject) => {
       const upload = new tusModule.Upload(file, {
@@ -389,7 +463,7 @@ async function uploadVideo(chapter: ChapterView, event: Event) {
           VideoId: ticket.upload.videoId,
           LibraryId: String(ticket.upload.libraryId),
         },
-        metadata: { filename: file.name, filetype: file.type || 'application/octet-stream' },
+        metadata: { filename: videoTitle, filetype: file.type || 'application/octet-stream' },
         retryDelays: [0, 1000, 3000, 5000],
         onError: reject,
         onProgress: (sent, total) => { uploadProgress.value = total ? Math.round(sent / total * 100) : 0 },
@@ -398,9 +472,12 @@ async function uploadVideo(chapter: ChapterView, event: Event) {
       upload.start()
     })
     await loadOutline(false)
-    successMessage.value = 'Upload finished. Bunny Stream is processing the video; it can be attached after it becomes Ready.'
+    successMessage.value = insideLesson
+      ? 'Video uploaded. It is linked to "' + videoTitle + '" and will remain Processing until Bunny marks it Ready.'
+      : 'Upload finished. Bunny Stream is processing the video; it can be attached after it becomes Ready.'
     void refreshAllVideoStatuses()
   } catch (error) {
+    if (insideLesson && lessonAssetId.value === createdAssetId) lessonAssetId.value = ''
     pageError.value = apiErrorMessage(error, 'Video upload failed. Confirm Bunny Stream settings and retry.')
   } finally {
     uploadActivity.value = null
