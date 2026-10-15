@@ -97,7 +97,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/api/v1/topics/{topic_id}/assets",
-            put(media::upload_topic_file),
+            get(media::list_topic_assets).put(media::upload_topic_file),
         )
         .route(
             "/api/v1/assets/{asset_id}/refresh-status",
