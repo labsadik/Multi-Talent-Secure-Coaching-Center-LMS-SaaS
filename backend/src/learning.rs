@@ -655,10 +655,11 @@ pub async fn create_lesson(
             doc! { "$set": set_fields },
         ).await.map_err(AppError::from_mongo)?;
 
-        if let Some((old_path, _)) = pending_storage_move {
-            let storage = BunnyStorage::from_settings(&state.settings, state.http.clone())?;
-            // Cleanup is best-effort; after the DB pointer changes the old key is no longer used.
-            let _ = storage.delete_object(&old_path).await;
+        if pending_storage_move.is_some() {
+            // Keep the previous object as a compatibility copy: course covers, company
+            // branding, lesson thumbnails, and links that were copied before attachment
+            // may still point at the original public CDN URL. The asset record now points
+            // at the lesson-specific hierarchy; an old-key cleanup requires URL migration.
         }
     }
 
