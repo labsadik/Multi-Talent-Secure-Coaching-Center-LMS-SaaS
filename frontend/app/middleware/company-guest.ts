@@ -1,7 +1,7 @@
 export default defineNuxtRouteMiddleware(async (to) => {
   const { currentUser, currentCompany, loadCurrentUser, clearSession } = useAuth()
 
-  if (!currentUser.value) {
+  if (!currentUser.value || !currentCompany.value) {
     try {
       await loadCurrentUser()
     } catch (error) {
