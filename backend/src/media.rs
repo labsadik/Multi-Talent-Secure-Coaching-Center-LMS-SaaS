@@ -852,6 +852,9 @@ pub struct TopicAssetResponse {
     pub duration_seconds: Option<i64>,
     pub created_at_ms: i64,
     pub public_url: Option<String>,
+    pub chapter_id: Option<String>,
+    pub chapter_part_id: Option<String>,
+    pub lesson_id: Option<String>,
 }
 
 pub async fn list_topic_assets(
@@ -905,6 +908,9 @@ pub async fn list_topic_assets(
             duration_seconds: document.get_i64("durationSeconds").ok(),
             created_at_ms: document.get_datetime("createdAt").map(|date| date.timestamp_millis()).unwrap_or_default(),
             public_url,
+            chapter_id: document.get_object_id("chapterId").ok().map(|id| id.to_hex()),
+            chapter_part_id: document.get_object_id("chapterPartId").ok().map(|id| id.to_hex()),
+            lesson_id: document.get_object_id("lessonId").ok().map(|id| id.to_hex()),
         })
     }).collect();
     Ok(Json(assets))
