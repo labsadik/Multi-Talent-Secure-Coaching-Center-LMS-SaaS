@@ -203,7 +203,7 @@ onMounted(() => {
       <nav class="mx-auto flex max-w-7xl items-center gap-1 overflow-x-auto px-4 pb-3 sm:px-6 lg:px-8" aria-label="Workspace sections">
         <NuxtLink  :to="workspacePath()" class="shrink-0 rounded-lg bg-brand-soft px-3 py-2 text-xs font-semibold text-brand">Overview</NuxtLink>
         <NuxtLink v-if="currentUser?.role === 'learner'"  :to="workspacePath('/learn')" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-muted hover:bg-canvas hover:text-ink">My learning</NuxtLink>
-        <NuxtLink v-if="['owner','admin'].includes(currentUser?.role || '')" :to="workspacePath('/users')" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-muted hover:bg-canvas hover:text-ink">People</NuxtLink>
+        <NuxtLink v-if="['owner','admin','instructor'].includes(currentUser?.role || '')" :to="workspacePath('/users')" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-muted hover:bg-canvas hover:text-ink">People</NuxtLink>
         <NuxtLink v-if="['owner','admin'].includes(currentUser?.role || '')" :to="workspacePath('/site')" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-muted hover:bg-canvas hover:text-ink">Public site & theme</NuxtLink>
         <NuxtLink v-if="['owner','admin'].includes(currentUser?.role || '')" :to="workspacePath('/settings')" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-muted hover:bg-canvas hover:text-ink">Payments & plans</NuxtLink>
         <NuxtLink v-if="['owner','admin'].includes(currentUser?.role || '') && currentCompany?.slug" :to="'/p/' + currentCompany.slug" target="_blank" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-brand hover:bg-brand-soft">View public page ↗</NuxtLink>
