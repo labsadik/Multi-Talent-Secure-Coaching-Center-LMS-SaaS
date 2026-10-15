@@ -511,107 +511,199 @@ onMounted(() => { void loadOutline() })
 
 <template>
   <div class="min-h-screen bg-canvas">
-    <header class="border-b border-line bg-white">
-      <div class="mx-auto flex h-[72px] max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
-        <NuxtLink to="/dashboard" class="inline-flex items-center gap-3 font-semibold"><span class="grid h-10 w-10 place-items-center rounded-2xl bg-brand text-lg font-black text-white">N</span>newage<span class="text-brand">.</span></NuxtLink>
-        <NuxtLink to="/dashboard" class="rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-muted hover:bg-canvas">← Workspace</NuxtLink>
+    <header class="sticky top-0 z-30 border-b border-line bg-white/95 backdrop-blur-xl">
+      <div class="mx-auto flex h-[72px] max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
+        <NuxtLink to="/dashboard" class="inline-flex shrink-0 items-center gap-3 font-semibold"><span class="grid h-10 w-10 place-items-center rounded-2xl bg-brand text-lg font-black text-white">N</span>newage<span class="text-brand">.</span></NuxtLink>
+        <nav class="flex items-center gap-2 overflow-x-auto" aria-label="Course tools">
+          <NuxtLink to="/dashboard" class="shrink-0 rounded-xl border border-line px-3 py-2.5 text-xs font-semibold text-muted hover:bg-canvas sm:px-4 sm:text-sm">← All courses</NuxtLink>
+          <NuxtLink to="/dashboard/site" class="shrink-0 rounded-xl border border-line px-3 py-2.5 text-xs font-semibold text-brand hover:bg-brand-soft sm:px-4 sm:text-sm">Public site & theme</NuxtLink>
+          <NuxtLink to="/dashboard/settings" class="hidden shrink-0 rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-muted hover:bg-canvas sm:inline-flex">Payments</NuxtLink>
+        </nav>
       </div>
     </header>
-    <main class="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
-      <p class="text-xs font-bold uppercase tracking-[0.2em] text-brand">Course builder</p>
-      <div class="mt-3 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-        <div><h1 class="text-3xl font-semibold tracking-tight sm:text-4xl">{{ course?.title || 'Loading course…' }}</h1><p class="mt-2 max-w-2xl text-sm leading-6 text-muted">{{ course?.description || 'Build a clear learning path with subjects, topics, and lessons.' }}</p></div>
-        <span v-if="course" class="w-fit rounded-full px-3 py-1.5 text-xs font-semibold capitalize" :class="course.status === 'published' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'">{{ course.status }}</span>
-      </div>
-      <div v-if="errorMessage" role="alert" class="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{{ errorMessage }}</div>
-      <div v-if="successMessage" role="status" class="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{{ successMessage }}</div>
 
-      <div class="mt-8 grid gap-6 lg:grid-cols-[0.85fr_1.15fr]">
-        <aside v-if="canManageContent" class="space-y-5">
+    <main class="mx-auto max-w-7xl px-4 py-7 sm:px-6 sm:py-9 lg:px-8">
+      <div class="overflow-hidden rounded-3xl border border-line bg-white">
+        <div class="grid lg:grid-cols-[220px_minmax(0,1fr)]">
+          <div class="relative min-h-36 overflow-hidden bg-gradient-to-br from-[#dce7ff] via-[#edf0ff] to-[#d9f8eb] lg:min-h-full">
+            <img v-if="course?.thumbnailUrl" :src="course.thumbnailUrl" :alt="course.title + ' thumbnail'" class="absolute inset-0 h-full w-full object-cover" />
+            <div v-if="course?.thumbnailUrl" class="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+            <div class="absolute -right-14 -top-16 h-48 w-48 rounded-full border-[24px] border-white/35" />
+            <div class="absolute bottom-4 left-4 rounded-xl border border-white/70 bg-white/80 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-ink">Course cover</div>
+          </div>
+          <div class="min-w-0 p-5 sm:p-7">
+            <div class="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+              <div class="min-w-0"><p class="text-xs font-bold uppercase tracking-[0.2em] text-brand">Course management</p><h1 class="mt-2 break-words text-2xl font-semibold tracking-tight sm:text-3xl">{{ course?.title || 'Loading course…' }}</h1><p class="mt-2 max-w-3xl text-sm leading-6 text-muted">{{ course?.description || 'Build your full curriculum, including subjects, parts, chapters, videos, PDFs and other assets.' }}</p></div>
+              <span v-if="course" class="w-fit shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold capitalize" :class="course.status === 'published' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'">{{ course.status }}</span>
+            </div>
+            <div class="mt-5 flex flex-wrap gap-2 text-xs">
+              <span class="rounded-lg bg-canvas px-3 py-2 font-semibold text-muted">{{ outline.length }} subjects</span>
+              <span class="rounded-lg bg-canvas px-3 py-2 font-semibold text-muted">{{ outline.reduce((count, item) => count + item.topics.length, 0) }} parts</span>
+              <span class="rounded-lg bg-canvas px-3 py-2 font-semibold text-muted">{{ outline.reduce((count, item) => count + item.topics.reduce((n, part) => n + part.chapters.length, 0), 0) }} chapters</span>
+              <span class="rounded-lg bg-canvas px-3 py-2 font-semibold text-muted">{{ outline.reduce((count, item) => count + item.topics.reduce((n, part) => n + part.chapters.reduce((m, chapter) => m + chapter.parts.length, 0), 0), 0) }} chapter parts</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="errorMessage" role="alert" class="mt-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700"><span class="font-bold">Error</span><span class="flex-1">{{ errorMessage }}</span><button type="button" class="font-semibold underline" @click="loadOutline">Retry</button></div>
+      <div v-if="successMessage" role="status" class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-800">{{ successMessage }}</div>
+
+      <section class="mt-7 grid gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
+        <aside v-if="canManageContent" class="space-y-4">
+          <div class="mb-2"><p class="text-xs font-bold uppercase tracking-[0.18em] text-brand">Curriculum builder</p><h2 class="mt-1 text-xl font-semibold">Build the learning path</h2><p class="mt-1 text-sm leading-6 text-muted">Create each level from top to bottom. Then upload videos, thumbnails, PDFs and other files from the asset library.</p></div>
+
           <section class="rounded-2xl border border-line bg-white p-5">
-            <h2 class="font-semibold">1. Add a subject</h2><p class="mt-1 text-xs leading-5 text-muted">A module or main section of the course.</p>
+            <div class="flex items-center gap-3"><span class="grid h-9 w-9 place-items-center rounded-xl bg-brand-soft text-sm font-bold text-brand">01</span><div><h3 class="font-semibold">Subject</h3><p class="text-xs text-muted">Main programme section</p></div></div>
             <form class="mt-4 space-y-3" @submit.prevent="saveSubject">
-              <input v-model="subjectTitle" required minlength="2" maxlength="140" placeholder="Subject title" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
-              <input v-model="subjectSlug" required minlength="2" maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="subject-slug" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
-              <button :disabled="saving || !course" class="w-full rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">{{ saving ? 'Saving…' : 'Add subject' }}</button>
+              <input v-model="subjectTitle" required minlength="2" maxlength="140" placeholder="e.g. Mathematics" aria-label="Subject title" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
+              <input v-model="subjectSlug" required minlength="2" maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="mathematics" aria-label="Subject slug" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
+              <button :disabled="saving || !course" class="w-full rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">{{ saving ? 'Saving…' : '+ Add subject' }}</button>
             </form>
           </section>
 
           <section class="rounded-2xl border border-line bg-white p-5">
-            <h2 class="font-semibold">2. Add a topic</h2><p class="mt-1 text-xs leading-5 text-muted">Choose the subject that should contain it.</p>
+            <div class="flex items-center gap-3"><span class="grid h-9 w-9 place-items-center rounded-xl bg-violet-100 text-sm font-bold text-violet-800">02</span><div><h3 class="font-semibold">Part</h3><p class="text-xs text-muted">Part inside a subject</p></div></div>
             <form class="mt-4 space-y-3" @submit.prevent="saveTopic(selectedSubjectId)">
-              <select v-model="selectedSubjectId" required class="w-full rounded-xl border border-line bg-white px-3.5 py-3 text-sm outline-none focus:border-brand">
+              <select v-model="selectedSubjectId" required aria-label="Select subject for part" class="w-full rounded-xl border border-line bg-white px-3.5 py-3 text-sm outline-none focus:border-brand">
                 <option value="" disabled>Select a subject</option><option v-for="subject in outline" :key="subject.id" :value="subject.id">{{ subject.title }}</option>
               </select>
-              <input v-model="topicTitle" required minlength="2" maxlength="140" placeholder="Topic title" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
-              <input v-model="topicSlug" required minlength="2" maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="topic-slug" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
-              <button :disabled="saving || !selectedSubjectId" class="w-full rounded-xl border border-brand/20 bg-brand-soft px-4 py-3 text-sm font-semibold text-brand disabled:opacity-50">{{ saving ? 'Saving…' : 'Add topic' }}</button>
+              <input v-model="topicTitle" required minlength="2" maxlength="140" placeholder="e.g. Algebra — Part 1" aria-label="Part title" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
+              <input v-model="topicSlug" required minlength="2" maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="algebra-part-1" aria-label="Part slug" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
+              <button :disabled="saving || !selectedSubjectId" class="w-full rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-semibold text-violet-800 disabled:opacity-50">{{ saving ? 'Saving…' : '+ Add part' }}</button>
             </form>
           </section>
 
           <section class="rounded-2xl border border-line bg-white p-5">
-            <h2 class="font-semibold">3. Add a lesson</h2><p class="mt-1 text-xs leading-5 text-muted">Text lessons work without media-provider configuration.</p>
-            <form class="mt-4 space-y-3" @submit.prevent="saveLesson(selectedTopicId)">
-              <select v-model="selectedTopicId" required class="w-full rounded-xl border border-line bg-white px-3.5 py-3 text-sm outline-none focus:border-brand">
-                <option value="" disabled>Select a topic</option><option v-for="subject in outline" :key="subject.id" disabled>— {{ subject.title }} —</option><option v-for="subject in outline" :key="subject.id + '-topics'" disabled></option>
-                <template v-for="subject in outline" :key="subject.id + '-select'"><option v-for="topic in subject.topics" :key="topic.id" :value="topic.id">{{ subject.title }} / {{ topic.title }}</option></template>
+            <div class="flex items-center gap-3"><span class="grid h-9 w-9 place-items-center rounded-xl bg-amber-100 text-sm font-bold text-amber-800">03</span><div><h3 class="font-semibold">Chapter</h3><p class="text-xs text-muted">Chapter inside a part</p></div></div>
+            <form class="mt-4 space-y-3" @submit.prevent="saveChapter(selectedTopicId)">
+              <select v-model="selectedTopicId" required aria-label="Select part for chapter" class="w-full rounded-xl border border-line bg-white px-3.5 py-3 text-sm outline-none focus:border-brand">
+                <option value="" disabled>Select a part</option><option v-for="subject in outline" :key="subject.id + '-heading'" disabled>— {{ subject.title }} —</option><template v-for="subject in outline" :key="subject.id + '-part-options'"><option v-for="part in subject.topics" :key="part.id" :value="part.id">{{ subject.title }} / {{ part.title }}</option></template>
               </select>
-              <input v-model="lessonTitle" required minlength="2" maxlength="140" placeholder="Lesson title" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
-              <input v-model="lessonSlug" required minlength="2" maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="lesson-slug" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
-              <select v-model="lessonType" class="w-full rounded-xl border border-line bg-white px-3.5 py-3 text-sm outline-none focus:border-brand">
-                <option value="text">Text lesson</option><option value="video">Video lesson (requires ready video asset)</option><option value="file">File lesson (requires uploaded asset)</option>
+              <input v-model="chapterTitle" required minlength="2" maxlength="140" placeholder="e.g. Linear equations" aria-label="Chapter title" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
+              <input v-model="chapterSlug" required minlength="2" maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="linear-equations" aria-label="Chapter slug" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
+              <button :disabled="saving || !selectedTopicId" class="w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900 disabled:opacity-50">{{ saving ? 'Saving…' : '+ Add chapter' }}</button>
+            </form>
+          </section>
+
+          <section class="rounded-2xl border border-line bg-white p-5">
+            <div class="flex items-center gap-3"><span class="grid h-9 w-9 place-items-center rounded-xl bg-sky-100 text-sm font-bold text-sky-800">04</span><div><h3 class="font-semibold">Chapter part</h3><p class="text-xs text-muted">Section inside a chapter</p></div></div>
+            <form class="mt-4 space-y-3" @submit.prevent="saveChapterPart(selectedChapterId)">
+              <select v-model="selectedChapterId" required aria-label="Select chapter for chapter part" class="w-full rounded-xl border border-line bg-white px-3.5 py-3 text-sm outline-none focus:border-brand">
+                <option value="" disabled>Select a chapter</option><template v-for="subject in outline" :key="subject.id + '-chapter-head'"><option v-for="topic in subject.topics" :key="topic.id + '-part-heading'" disabled>— {{ subject.title }} / {{ topic.title }} —</option><template v-for="topic in subject.topics" :key="topic.id + '-chapter-options'"><option v-for="chapter in topic.chapters" :key="chapter.id" :value="chapter.id">{{ topic.title }} / {{ chapter.title }}</option></template></template>
               </select>
-              <textarea v-if="lessonType === 'text'" v-model="lessonContent" required maxlength="50000" rows="5" placeholder="Write the lesson content…" class="w-full resize-y rounded-xl border border-line px-3.5 py-3 text-sm leading-6 outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
-              <div v-else class="rounded-xl border border-dashed border-brand/30 bg-brand-soft/40 p-3 text-xs leading-5 text-muted">Upload a file or video in the relevant topic panel, then select its asset ID:
-                <input v-model="selectedAssetId" required placeholder="Uploaded asset ID" class="mt-2 w-full rounded-lg border border-line bg-white px-3 py-2.5 font-mono text-xs outline-none focus:border-brand" />
-              </div>
-              <div><label for="lessonDuration" class="mb-1.5 block text-xs font-semibold text-muted">Duration (seconds, optional)</label><input id="lessonDuration" v-model.number="lessonDuration" type="number" min="0" max="86400" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand" /></div>
-              <label class="flex items-center gap-2 text-sm text-muted"><input v-model="lessonPreview" type="checkbox" class="h-4 w-4 rounded border-line accent-brand" /> Allow as a preview for non-enrolled learners</label>
-              <button :disabled="saving || !selectedTopicId" class="w-full rounded-xl bg-ink px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">{{ saving ? 'Saving…' : 'Add lesson' }}</button>
+              <input v-model="chapterPartTitle" required minlength="2" maxlength="140" placeholder="e.g. Worked examples" aria-label="Chapter part title" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
+              <input v-model="chapterPartSlug" required minlength="2" maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="worked-examples" aria-label="Chapter part slug" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
+              <button :disabled="saving || !selectedChapterId" class="w-full rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-900 disabled:opacity-50">{{ saving ? 'Saving…' : '+ Add chapter part' }}</button>
+            </form>
+          </section>
+
+          <section class="rounded-2xl border border-line bg-white p-5">
+            <div class="flex items-center gap-3"><span class="grid h-9 w-9 place-items-center rounded-xl bg-emerald-100 text-sm font-bold text-emerald-800">05</span><div><h3 class="font-semibold">Lesson / video / asset</h3><p class="text-xs text-muted">Content inside a chapter part</p></div></div>
+            <form class="mt-4 space-y-3" @submit.prevent="saveLesson(selectedChapterPartId)">
+              <select v-model="selectedChapterPartId" required aria-label="Select chapter part for lesson" class="w-full rounded-xl border border-line bg-white px-3.5 py-3 text-sm outline-none focus:border-brand">
+                <option value="" disabled>Select a chapter part</option><template v-for="subject in outline" :key="subject.id + '-lesson-chapter-head'"><template v-for="topic in subject.topics" :key="topic.id + '-lesson-topic'"><option v-for="chapter in topic.chapters" :key="chapter.id + '-lesson-heading'" disabled>— {{ subject.title }} / {{ topic.title }} / {{ chapter.title }} —</option><option v-for="part in chapter.parts" :key="part.id" :value="part.id">{{ topic.title }} / {{ chapter.title }} / {{ part.title }}</option></template></template>
+              </select>
+              <input v-model="lessonTitle" required minlength="2" maxlength="140" placeholder="Lesson title" aria-label="Lesson title" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
+              <input v-model="lessonSlug" required minlength="2" maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="lesson-slug" aria-label="Lesson slug" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
+              <select v-model="lessonType" class="w-full rounded-xl border border-line bg-white px-3.5 py-3 text-sm outline-none focus:border-brand"><option value="text">Text lesson</option><option value="video">Video lesson</option><option value="file">PDF / image / file lesson</option></select>
+              <textarea v-if="lessonType === 'text'" v-model="lessonContent" required maxlength="50000" rows="5" placeholder="Write the text lesson…" class="w-full resize-y rounded-xl border border-line px-3.5 py-3 text-sm leading-6 outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
+              <div v-else class="rounded-xl border border-dashed border-brand/30 bg-brand-soft/40 p-3"><p class="text-xs leading-5 text-muted">Select the video or file from the asset library on the matching course part. The selected asset must belong to the same part and be ready.</p><div class="mt-2 rounded-lg bg-white px-3 py-2.5"><p class="text-[10px] font-bold uppercase tracking-wider text-muted">Selected asset ID</p><p class="mt-1 break-all font-mono text-xs">{{ selectedAssetId || 'No asset selected' }}</p></div></div>
+              <div><label for="lessonThumbnail" class="mb-1.5 block text-xs font-semibold text-muted">Lesson / video thumbnail URL (HTTPS)</label><input id="lessonThumbnail" v-model="lessonThumbnailUrl" type="url" placeholder="https://…" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand" /><p class="mt-1 text-[11px] leading-5 text-muted">Upload an image first, then use its public CDN URL from the asset library.</p></div>
+              <div><label for="lessonDuration" class="mb-1.5 block text-xs font-semibold text-muted">Duration (seconds)</label><input id="lessonDuration" v-model.number="lessonDuration" type="number" min="0" max="86400" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand" /></div>
+              <label class="flex items-center gap-2 text-sm text-muted"><input v-model="lessonPreview" type="checkbox" class="h-4 w-4 rounded border-line accent-brand" /> Allow as preview without enrolment</label>
+              <button :disabled="saving || !selectedChapterPartId" class="w-full rounded-xl bg-ink px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">{{ saving ? 'Saving…' : '+ Add lesson / media' }}</button>
             </form>
           </section>
         </aside>
 
-        <section class="min-w-0 rounded-2xl border border-line bg-white p-5 sm:p-6">
-          <div class="flex items-center justify-between gap-3"><div><h2 class="text-lg font-semibold">Learning outline</h2><p class="mt-1 text-xs text-muted">Subjects, topics and lessons in order.</p></div><span class="rounded-full bg-canvas px-3 py-1 text-xs font-semibold text-muted">{{ outline.length }} subjects</span></div>
-          <div v-if="loading" class="mt-6 space-y-3"><div v-for="n in 4" :key="n" class="h-16 animate-pulse rounded-xl bg-canvas" /></div>
-          <div v-else-if="!outline.length" class="mt-6 rounded-2xl border border-dashed border-slate-300 px-5 py-12 text-center"><h3 class="font-semibold">No subjects yet</h3><p class="mt-2 text-sm leading-6 text-muted">{{ canManageContent ? 'Add your first subject to start mapping the learning path.' : 'This course has not published any learning content yet.' }}</p></div>
+        <section class="min-w-0 rounded-2xl border border-line bg-white p-4 sm:p-6">
+          <div class="flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><div><p class="text-xs font-bold uppercase tracking-[0.16em] text-brand">Your curriculum</p><h2 class="mt-1 text-xl font-semibold">Course content tree</h2><p class="mt-1 text-sm leading-6 text-muted">Subject → Part → Chapter → Chapter part → Video, text lesson, PDF or image.</p></div><span class="w-fit rounded-full bg-canvas px-3 py-1.5 text-xs font-semibold text-muted">{{ outline.length }} subjects</span></div>
+
+          <div v-if="loading" class="mt-6 space-y-3"><div v-for="n in 5" :key="n" class="h-16 animate-pulse rounded-xl bg-canvas" /></div>
+          <div v-else-if="!outline.length" class="mt-6 rounded-2xl border border-dashed border-slate-300 px-5 py-12 text-center"><h3 class="font-semibold">Start with your first subject</h3><p class="mt-2 text-sm leading-6 text-muted">Use the Curriculum builder on the left, then add a part, chapter, chapter part and lessons. Upload video, thumbnail, PDF and image assets under a course part.</p></div>
+
           <div v-else class="mt-6 space-y-4">
             <article v-for="(subject, subjectIndex) in outline" :key="subject.id" class="overflow-hidden rounded-2xl border border-line">
-              <div class="flex items-start gap-3 bg-canvas px-4 py-4"><span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-soft text-xs font-bold text-brand">{{ String(subjectIndex + 1).padStart(2, '0') }}</span><div class="min-w-0 flex-1"><h3 class="font-semibold">{{ subject.title }}</h3><p class="mt-1 text-xs text-muted">{{ subject.topics.length }} topics <span v-if="subject.description">· {{ subject.description }}</span></p></div><div v-if="canManageContent" class="flex shrink-0 gap-2"><button type="button" class="rounded-lg border border-line bg-white px-2.5 py-1.5 text-xs font-semibold hover:border-brand hover:text-brand" @click="beginEdit('subject', subject)">Edit</button><button type="button" class="rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50" @click="archiveContent('subject', subject)">Archive</button></div></div>
-              <div class="space-y-3 p-3 sm:p-4">
-                <div v-for="(topic, topicIndex) in subject.topics" :key="topic.id" class="rounded-xl border border-line p-3 sm:p-4">
-                  <div class="flex items-center justify-between gap-3"><div class="flex min-w-0 items-center gap-2"><span class="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-emerald-100 text-xs font-bold text-emerald-800">{{ subjectIndex + 1 }}.{{ topicIndex + 1 }}</span><div class="min-w-0"><h4 class="truncate text-sm font-semibold">{{ topic.title }}</h4><p class="mt-0.5 text-[11px] text-muted">{{ topic.lessons.length }} lessons <span v-if="topic.description">· {{ topic.description }}</span></p></div></div><div v-if="canManageContent" class="flex shrink-0 gap-2"><button type="button" class="rounded-lg border border-line px-2.5 py-1.5 text-xs font-semibold hover:border-brand hover:text-brand" @click="beginEdit('topic', topic)">Edit</button><button type="button" class="rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50" @click="archiveContent('topic', topic)">Archive</button></div></div>
-                  <div v-if="canManageContent" class="mt-3 grid gap-3 rounded-xl bg-canvas p-3 sm:grid-cols-2">
-                    <label class="block text-xs font-semibold text-muted">Upload image/PDF
-                      <input type="file" accept="image/jpeg,image/png,image/webp,image/gif,application/pdf" :disabled="uploading" class="mt-2 block w-full text-xs file:mr-2 file:rounded-lg file:border-0 file:bg-white file:px-3 file:py-2 file:text-xs file:font-semibold file:text-brand" @change="uploadStorageFile(topic.id, $event)" />
-                    </label>
-                    <label class="block text-xs font-semibold text-muted">Upload video
-                      <input type="file" accept="video/*" :disabled="uploading" class="mt-2 block w-full text-xs file:mr-2 file:rounded-lg file:border-0 file:bg-white file:px-3 file:py-2 file:text-xs file:font-semibold file:text-brand" @change="uploadVideo(topic.id, $event)" />
-                    </label>
-                    <div v-if="uploading" class="text-xs font-medium text-brand sm:col-span-2">Uploading… {{ uploadProgress }}%</div>
-                    <div v-if="selectedAssetId" class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2.5 text-xs text-emerald-800 sm:col-span-2"><span class="min-w-0 truncate font-mono">{{ selectedAssetId }}</span><div class="flex gap-3"><button v-if="pendingVideoAssetId" type="button" class="shrink-0 font-semibold underline" @click="refreshVideo(pendingVideoAssetId)">Refresh video status</button><button type="button" class="shrink-0 underline" @click="selectedAssetId = ''; pendingVideoAssetId = ''">Clear</button></div></div>
+              <div class="flex items-start gap-3 bg-canvas px-4 py-4">
+                <span class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand-soft text-xs font-bold text-brand">{{ String(subjectIndex + 1).padStart(2, '0') }}</span>
+                <div class="min-w-0 flex-1"><h3 class="font-semibold">{{ subject.title }}</h3><p class="mt-1 text-xs text-muted">{{ subject.topics.length }} parts <span v-if="subject.description">· {{ subject.description }}</span></p></div>
+                <div v-if="canManageContent" class="flex shrink-0 gap-1.5"><button type="button" class="rounded-lg border border-line bg-white px-2.5 py-1.5 text-xs font-semibold hover:border-brand hover:text-brand" @click="beginEdit('subject', subject)">Edit</button><button type="button" class="rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50" @click="archiveContent('subject', subject)">Archive</button></div>
+              </div>
+
+              <div class="space-y-4 p-3 sm:p-4">
+                <div v-for="(topic, topicIndex) in subject.topics" :key="topic.id" class="overflow-hidden rounded-xl border border-violet-200 bg-white">
+                  <div class="flex flex-wrap items-start gap-3 bg-violet-50/70 px-3 py-3 sm:px-4">
+                    <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-violet-100 text-xs font-bold text-violet-900">{{ subjectIndex + 1 }}.{{ topicIndex + 1 }}</span>
+                    <div class="min-w-0 flex-1"><h4 class="font-semibold">{{ topic.title }}</h4><p class="mt-1 text-xs text-muted">{{ topic.chapters.length }} chapters · {{ topic.assets.length }} assets</p><p v-if="topic.description" class="mt-1 text-xs leading-5 text-muted">{{ topic.description }}</p></div>
+                    <div v-if="canManageContent" class="flex shrink-0 gap-1.5"><button type="button" class="rounded-lg border border-violet-200 bg-white px-2.5 py-1.5 text-xs font-semibold hover:border-brand hover:text-brand" @click="beginEdit('topic', topic)">Edit part</button><button type="button" class="rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50" @click="archiveContent('topic', topic)">Archive</button></div>
                   </div>
-                  <div v-if="topic.lessons.length" class="mt-3 space-y-2">
-                    <div v-for="lesson in topic.lessons" :key="lesson.id" class="flex flex-col gap-2 rounded-xl border border-line/70 px-3 py-3 sm:flex-row sm:items-center">
-                      <div class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white text-muted ring-1 ring-line"><svg v-if="lesson.lessonType === 'video'" viewBox="0 0 24 24" fill="none" class="h-4 w-4" aria-hidden="true"><path d="m8 5 11 7-11 7V5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" /></svg><svg v-else-if="lesson.lessonType === 'text'" viewBox="0 0 24 24" fill="none" class="h-4 w-4" aria-hidden="true"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" /></svg><svg v-else viewBox="0 0 24 24" fill="none" class="h-4 w-4" aria-hidden="true"><path d="M6 3h8l4 4v14H6zM14 3v5h5" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" /></svg></div>
-                      <div class="min-w-0 flex-1"><p class="truncate text-sm font-medium">{{ lesson.title }}</p><p class="mt-0.5 text-[11px] capitalize text-muted">{{ lesson.lessonType || 'lesson' }}<span v-if="lesson.isPreview"> · preview</span></p></div>
-                      <div class="flex flex-wrap gap-2"><button type="button" class="rounded-lg border border-line px-3 py-2 text-xs font-semibold hover:bg-canvas" @click="openLesson(lesson)">Open</button><button v-if="canManageContent" type="button" class="rounded-lg border border-line px-3 py-2 text-xs font-semibold hover:border-brand hover:text-brand" @click="beginEdit('lesson', lesson)">Edit</button><button v-if="canManageContent" type="button" class="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50" @click="archiveContent('lesson', lesson)">Archive</button><button v-if="currentUser?.role === 'learner'" type="button" :disabled="busyLessonId === lesson.id" class="rounded-lg bg-emerald-100 px-3 py-2 text-xs font-semibold text-emerald-800 disabled:opacity-50" @click="markComplete(lesson)">{{ busyLessonId === lesson.id ? 'Saving…' : 'Complete' }}</button></div>
-                      <button v-if="lesson.mediaAssetId && canManageContent" type="button" class="rounded-lg border border-line px-2 py-2 text-[10px] font-semibold text-muted hover:bg-canvas" @click="refreshVideo(lesson.mediaAssetId)">Refresh video</button>
+
+                  <div v-if="canManageContent" class="border-t border-violet-100 bg-canvas/60 p-3">
+                    <div class="grid gap-3 sm:grid-cols-2">
+                      <label class="block text-xs font-semibold text-muted">Upload thumbnail / image / PDF
+                        <input type="file" accept="image/jpeg,image/png,image/webp,image/gif,application/pdf" :disabled="uploading" class="mt-2 block w-full text-xs file:mr-2 file:rounded-lg file:border-0 file:bg-white file:px-3 file:py-2 file:text-xs file:font-semibold file:text-brand" @change="uploadStorageFile(topic.id, $event)" />
+                      </label>
+                      <label class="block text-xs font-semibold text-muted">Upload video to Bunny Stream
+                        <input type="file" accept="video/*" :disabled="uploading" class="mt-2 block w-full text-xs file:mr-2 file:rounded-lg file:border-0 file:bg-white file:px-3 file:py-2 file:text-xs file:font-semibold file:text-brand" @change="uploadVideo(topic.id, $event)" />
+                      </label>
+                    </div>
+                    <p v-if="uploading" class="mt-3 text-xs font-semibold text-brand">Uploading… {{ uploadProgress }}%</p>
+                    <div v-if="selectedAssetId && selectedAssetTopicId === topic.id" class="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900"><span class="min-w-0 break-all font-mono">Selected: {{ selectedAssetId }}</span><div class="flex gap-3"><button v-if="pendingVideoAssetId" type="button" class="shrink-0 font-semibold underline" @click="refreshVideo(pendingVideoAssetId)">Refresh status</button><button type="button" class="shrink-0 underline" @click="selectedAssetId = ''; pendingVideoAssetId = ''; selectedAssetTopicId = ''">Clear selection</button></div></div>
+
+                    <div class="mt-4">
+                      <div class="flex items-center justify-between gap-3"><h5 class="text-xs font-bold uppercase tracking-[0.14em] text-muted">Asset library</h5><span class="text-[10px] text-muted">Video · image · PDF/file</span></div>
+                      <div v-if="topic.assets.length" class="mt-2 grid gap-2 sm:grid-cols-2">
+                        <article v-for="asset in topic.assets" :key="asset.id" class="flex min-w-0 gap-3 rounded-xl border border-line bg-white p-3">
+                          <img v-if="asset.assetType === 'image' && asset.publicUrl" :src="asset.publicUrl" :alt="asset.title" class="h-14 w-14 shrink-0 rounded-lg border border-line object-cover" />
+                          <div v-else class="grid h-14 w-14 shrink-0 place-items-center rounded-lg bg-canvas text-[10px] font-bold uppercase text-muted">{{ asset.assetType }}</div>
+                          <div class="min-w-0 flex-1"><p class="truncate text-xs font-semibold" :title="asset.title">{{ asset.title }}</p><p class="mt-1 truncate font-mono text-[10px] text-muted">{{ asset.id }}</p><div class="mt-1 flex flex-wrap items-center gap-1.5"><span class="rounded bg-canvas px-1.5 py-0.5 text-[10px] capitalize text-muted">{{ asset.status }}</span><span class="text-[10px] text-muted">{{ asset.contentType || asset.provider }}<span v-if="asset.sizeBytes"> · {{ bytesLabel(asset.sizeBytes) }}</span></span></div>
+                            <div class="mt-2 flex flex-wrap gap-1.5"><button type="button" :disabled="asset.assetType !== 'video' && asset.status !== 'ready'" class="rounded-md border border-line px-2 py-1 text-[10px] font-semibold disabled:opacity-40" @click="selectAsset(topic.id, asset)">Use in lesson</button><button v-if="asset.assetType === 'video' && asset.status !== 'ready'" type="button" class="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-900" @click="refreshVideo(asset.id)">Refresh status</button><button v-if="asset.assetType === 'image'" type="button" class="rounded-md border border-line px-2 py-1 text-[10px] font-semibold" @click="useAssetAsLessonThumbnail(asset)">Use as lesson thumb</button><button v-if="asset.assetType === 'image'" type="button" class="rounded-md border border-line px-2 py-1 text-[10px] font-semibold" @click="useAssetAsCourseThumbnail(asset)">Set course cover</button><button v-if="asset.publicUrl" type="button" class="rounded-md border border-line px-2 py-1 text-[10px] font-semibold text-brand" @click="GenUI.copy(asset.publicUrl)">Copy public URL</button></div>
+                          </div>
+                        </article>
+                      </div>
+                      <div v-else class="mt-2 rounded-xl border border-dashed border-slate-300 bg-white px-4 py-5 text-center"><p class="text-xs font-semibold text-ink">No assets uploaded yet</p><p class="mt-1 text-xs leading-5 text-muted">Upload a thumbnail, image, PDF or video above. Newly uploaded assets appear here.</p></div>
                     </div>
                   </div>
-                  <p v-else class="mt-3 rounded-lg bg-canvas px-3 py-2.5 text-xs text-muted">No lessons in this topic yet.</p>
+
+                  <div class="space-y-3 p-3 sm:p-4">
+                    <div v-for="(chapter, chapterIndex) in topic.chapters" :key="chapter.id" class="overflow-hidden rounded-xl border border-amber-200">
+                      <div class="flex flex-wrap items-start gap-3 bg-amber-50 px-3 py-3">
+                        <span class="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-amber-100 text-[11px] font-bold text-amber-900">{{ topicIndex + 1 }}.{{ chapterIndex + 1 }}</span>
+                        <div class="min-w-0 flex-1"><h5 class="text-sm font-semibold">{{ chapter.title }}</h5><p class="mt-1 text-[11px] text-muted">{{ chapter.parts.length }} chapter parts</p></div>
+                        <div v-if="canManageContent" class="flex gap-1.5"><button type="button" class="rounded-lg border border-amber-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold hover:border-brand hover:text-brand" @click="beginEdit('chapter', chapter)">Edit</button><button type="button" class="rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-red-700" @click="archiveContent('chapter', chapter)">Archive</button></div>
+                      </div>
+                      <div class="space-y-3 p-3">
+                        <div v-for="(part, partIndex) in chapter.parts" :key="part.id" class="rounded-xl border border-sky-200 p-3">
+                          <div class="flex flex-wrap items-start gap-3"><span class="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-sky-100 text-[11px] font-bold text-sky-900">{{ chapterIndex + 1 }}.{{ partIndex + 1 }}</span><div class="min-w-0 flex-1"><h6 class="text-sm font-semibold">{{ part.title }}</h6><p class="mt-1 text-[11px] text-muted">{{ part.lessons.length }} lessons / assets <span v-if="part.description">· {{ part.description }}</span></p></div><div v-if="canManageContent" class="flex gap-1.5"><button type="button" class="rounded-lg border border-line px-2.5 py-1.5 text-[11px] font-semibold hover:border-brand hover:text-brand" @click="beginEdit('chapterPart', part)">Edit part</button><button type="button" class="rounded-lg border border-red-200 px-2.5 py-1.5 text-[11px] font-semibold text-red-700" @click="archiveContent('chapterPart', part)">Archive</button></div></div>
+                          <div v-if="part.lessons.length" class="mt-3 space-y-2">
+                            <div v-for="lesson in part.lessons" :key="lesson.id" class="flex flex-wrap items-center gap-3 rounded-xl border border-line/70 p-3">
+                              <img v-if="lesson.thumbnailUrl" :src="lesson.thumbnailUrl" :alt="lesson.title + ' thumbnail'" class="h-11 w-16 shrink-0 rounded-lg object-cover" />
+                              <div v-else class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-canvas text-xs font-bold uppercase text-muted">{{ lesson.lessonType === 'video' ? '▶' : lesson.lessonType === 'file' ? 'PDF' : 'Aa' }}</div>
+                              <div class="min-w-0 flex-1"><p class="truncate text-sm font-semibold">{{ lesson.title }}</p><p class="mt-1 text-[11px] capitalize text-muted">{{ lesson.lessonType || 'lesson' }}<span v-if="lesson.isPreview"> · preview</span><span v-if="lesson.durationSeconds"> · {{ lesson.durationSeconds }} sec</span></p></div>
+                              <div class="flex flex-wrap gap-1.5"><button type="button" class="rounded-lg border border-line px-2.5 py-2 text-xs font-semibold hover:bg-canvas" @click="openLesson(lesson)">Open</button><button v-if="canManageContent" type="button" class="rounded-lg border border-line px-2.5 py-2 text-xs font-semibold hover:border-brand hover:text-brand" @click="beginEdit('lesson', lesson)">Edit</button><button v-if="canManageContent" type="button" class="rounded-lg border border-red-200 px-2.5 py-2 text-xs font-semibold text-red-700 hover:bg-red-50" @click="archiveContent('lesson', lesson)">Archive</button><button v-if="currentUser?.role === 'learner'" type="button" :disabled="busyLessonId === lesson.id" class="rounded-lg bg-emerald-100 px-2.5 py-2 text-xs font-semibold text-emerald-800 disabled:opacity-50" @click="markComplete(lesson)">{{ busyLessonId === lesson.id ? 'Saving…' : 'Complete' }}</button></div>
+                              <button v-if="lesson.mediaAssetId && canManageContent && lesson.lessonType === 'video'" type="button" class="rounded-lg border border-line px-2.5 py-2 text-[10px] font-semibold text-muted hover:bg-canvas" @click="refreshVideo(lesson.mediaAssetId)">Refresh status</button>
+                            </div>
+                          </div>
+                          <p v-else class="mt-3 rounded-lg bg-canvas px-3 py-2.5 text-xs text-muted">No lessons here yet. Use the form on the left to add a video, text lesson or file.</p>
+                        </div>
+                        <p v-if="!chapter.parts.length" class="rounded-xl border border-dashed border-slate-300 px-4 py-5 text-center text-xs text-muted">No chapter parts yet. Add a chapter part on the left.</p>
+                      </div>
+                    </div>
+                    <p v-if="!topic.chapters.length" class="rounded-xl border border-dashed border-slate-300 px-4 py-6 text-center text-xs leading-5 text-muted">No chapters yet. Add a chapter in this part, then create chapter parts and attach lessons.</p>
+                    <div v-if="topic.lessons.length" class="mt-3 rounded-xl border border-dashed border-line p-3"><p class="text-xs font-semibold text-muted">Older lessons attached directly to this part</p><div v-for="lesson in topic.lessons" :key="lesson.id" class="mt-2 flex flex-wrap items-center gap-3 rounded-lg bg-canvas p-3"><span class="min-w-0 flex-1 truncate text-xs font-semibold">{{ lesson.title }}</span><button type="button" class="rounded-lg border border-line bg-white px-2.5 py-1.5 text-[11px] font-semibold" @click="openLesson(lesson)">Open</button><button v-if="canManageContent" type="button" class="rounded-lg border border-line bg-white px-2.5 py-1.5 text-[11px] font-semibold" @click="beginEdit('lesson', lesson)">Edit</button><button v-if="canManageContent" type="button" class="rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-red-700" @click="archiveContent('lesson', lesson)">Archive</button></div></div>
+                  </div>
                 </div>
-                <p v-if="!subject.topics.length" class="rounded-xl border border-dashed border-slate-300 px-4 py-5 text-center text-xs text-muted">No topics yet. Add one using the course builder.</p>
+                <p v-if="!subject.topics.length" class="rounded-xl border border-dashed border-slate-300 px-4 py-7 text-center text-xs text-muted">No parts yet. Add a part to this subject.</p>
               </div>
             </article>
           </div>
         </section>
-      </div>
+      </section>
 
       <div v-if="editTarget" class="fixed inset-0 z-50 flex items-center justify-center bg-ink/60 p-4" @click.self="editTarget = null">
         <section class="max-h-[90vh] w-full max-w-xl overflow-auto rounded-3xl bg-white p-5 shadow-2xl sm:p-7" role="dialog" aria-modal="true" aria-labelledby="editContentHeading">
-          <div class="flex items-start justify-between gap-4"><div><p class="text-xs font-bold uppercase tracking-[0.2em] text-brand">Content management</p><h2 id="editContentHeading" class="mt-2 text-xl font-semibold">Edit {{ editTarget.kind }}</h2><p class="mt-1 text-sm text-muted">Changes are saved to the API and appear in the learning outline.</p></div><button type="button" class="grid h-9 w-9 place-items-center rounded-xl border border-line text-muted hover:bg-canvas" aria-label="Close editor" @click="editTarget = null">×</button></div>
+          <div class="flex items-start justify-between gap-4"><div><p class="text-xs font-bold uppercase tracking-[0.2em] text-brand">Content management</p><h2 id="editContentHeading" class="mt-2 text-xl font-semibold">Edit {{ editTarget.kind === 'chapterPart' ? 'chapter part' : editTarget.kind }}</h2><p class="mt-1 text-sm text-muted">Changes are saved to the API and shown in the curriculum.</p></div><button type="button" class="grid h-9 w-9 place-items-center rounded-xl border border-line text-muted hover:bg-canvas" aria-label="Close editor" @click="editTarget = null">×</button></div>
           <form class="mt-5 space-y-4" @submit.prevent="saveEditedContent">
             <div><label for="editContentTitle" class="mb-1.5 block text-sm font-semibold">Title</label><input id="editContentTitle" v-model="editTitle" required minlength="2" maxlength="140" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" /></div>
             <div><label for="editContentSlug" class="mb-1.5 block text-sm font-semibold">URL slug</label><input id="editContentSlug" v-model="editSlug" required minlength="2" maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" /></div>
@@ -620,6 +712,7 @@ onMounted(() => { void loadOutline() })
               <div><label for="editLessonType" class="mb-1.5 block text-sm font-semibold">Lesson type</label><select id="editLessonType" v-model="editLessonType" class="w-full rounded-xl border border-line bg-white px-3.5 py-3 text-sm"><option value="text">Text</option><option value="video">Video</option><option value="file">File / PDF / image</option></select></div>
               <div v-if="editLessonType === 'text'"><label for="editLessonContent" class="mb-1.5 block text-sm font-semibold">Lesson content</label><textarea id="editLessonContent" v-model="editLessonContent" required maxlength="50000" rows="7" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm leading-6 outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" /></div>
               <div v-else><label for="editLessonAsset" class="mb-1.5 block text-sm font-semibold">Ready media asset ID</label><input id="editLessonAsset" v-model="editMediaAssetId" required class="w-full rounded-xl border border-line px-3.5 py-3 font-mono text-xs outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" /><p class="mt-1 text-xs text-muted">Use an asset that is ready and belongs to this topic.</p></div>
+              <div><label for="editLessonThumb" class="mb-1.5 block text-sm font-semibold">Lesson thumbnail URL (HTTPS)</label><input id="editLessonThumb" v-model="editThumbnailUrl" type="url" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand" /></div>
               <div><label for="editLessonDuration" class="mb-1.5 block text-sm font-semibold">Duration (seconds)</label><input id="editLessonDuration" v-model.number="editDuration" type="number" min="0" max="86400" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand" /></div>
               <label class="flex items-center gap-2 text-sm text-muted"><input v-model="editPreview" type="checkbox" class="h-4 w-4 rounded border-line accent-brand" /> Allow preview without enrolment</label>
             </template>
