@@ -6,6 +6,8 @@ use axum::{
 use futures_util::TryStreamExt;
 use mongodb::bson::{doc, oid::ObjectId, DateTime, Document};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
     auth::{valid_slug, AuthUser},
@@ -174,6 +176,82 @@ async fn load_list(
 
     let documents: Vec<Document> = cursor.try_collect().await.map_err(AppError::from_mongo)?;
     documents.into_iter().map(content_response).collect()
+}
+
+async fn add_lesson_thumbnails(
+    state: &AppState,
+    company_id: &ObjectId,
+    lessons: &mut [ContentResponse],
+) -> AppResult<()> {
+    let asset_ids: Vec<ObjectId> = lessons
+        .iter()
+        .filter(|lesson| lesson.thumbnail_url.is_none())
+        .filter_map(|lesson| lesson.media_asset_id.as_deref())
+        .filter_map(|id| ObjectId::parse_str(id).ok())
+        .collect();
+    if asset_ids.is_empty() {
+        return Ok(());
+    }
+
+    let cursor = state.db.collection::<Document>("assets")
+        .find(doc! {
+            "_id": { "$in": asset_ids },
+            "companyId": company_id.clone(),
+            "status": "ready",
+            "deletedAt": { "$exists": false },
+        })
+        .await?;
+    let assets: Vec<Document> = cursor.try_collect().await.map_err(AppError::from_mongo)?;
+    let library_id = state.settings.bunny_stream_library_id;
+    let token_key = state.settings.bunny_stream_token_auth_key.as_deref()
+        .filter(|key| !key.is_empty());
+    let assets_by_id: std::collections::HashMap<String, Document> = assets.into_iter()
+        .filter_map(|asset| asset.get_object_id("_id").ok().map(|id| (id.to_hex(), asset)))
+        .collect();
+
+    for lesson in lessons.iter_mut() {
+        if lesson.thumbnail_url.is_some() {
+            continue;
+        }
+        let Some(asset_id) = lesson.media_asset_id.as_deref() else { continue };
+        let Some(asset) = assets_by_id.get(asset_id) else { continue };
+        match asset.get_str("provider").unwrap_or_default() {
+            "bunny_storage" if asset.get_str("contentType").unwrap_or_default().starts_with("image/") => {
+                lesson.thumbnail_url = Some(format!("/api/v1/assets/{}/download", asset_id));
+            }
+            "bunny_stream" if lesson.lesson_type.as_deref() == Some("video") => {
+                let Some(library_id) = library_id else { continue };
+                let Some(video_id) = asset.get_str("providerVideoId").ok() else { continue };
+                if video_id.is_empty() || !video_id.chars().all(|ch| ch.is_ascii_alphanumeric() || "-_".contains(ch)) {
+                    continue;
+                }
+                let raw_name = asset.get_str("thumbnailFileName").unwrap_or("thumbnail.jpg");
+                let filename = if !raw_name.is_empty()
+                    && raw_name.len() <= 128
+                    && raw_name.chars().all(|ch| ch.is_ascii_alphanumeric() || "._-".contains(ch))
+                {
+                    raw_name
+                } else {
+                    "thumbnail.jpg"
+                };
+                let mut url = format!("https://vz-{library_id}.b-cdn.net/{video_id}/{filename}");
+                if let Some(token_key) = token_key {
+                    let now = SystemTime::now().duration_since(UNIX_EPOCH)
+                        .map_err(|_| AppError::Internal)?.as_secs();
+                    let expires = now.saturating_add(state.settings.bunny_playback_token_ttl_seconds);
+                    let mut digest = Sha256::new();
+                    digest.update(token_key.as_bytes());
+                    digest.update(video_id.as_bytes());
+                    digest.update(expires.to_string().as_bytes());
+                    let token = hex::encode(digest.finalize());
+                    url.push_str(&format!("?token={token}&expires={expires}"));
+                }
+                lesson.thumbnail_url = Some(url);
+            }
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 pub async fn list_subjects(
@@ -385,7 +463,8 @@ pub async fn list_lessons(
         }
     }
 
-    let items = load_list(&state.db.collection::<Document>("lessons"), filter).await?;
+    let mut items = load_list(&state.db.collection::<Document>("lessons"), filter).await?;
+    add_lesson_thumbnails(&state, &auth.company_id, &mut items).await?;
     Ok(Json(items))
 }
 
