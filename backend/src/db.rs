@@ -16,6 +16,7 @@ pub async fn ensure_indexes(db: &Database) -> mongodb::error::Result<()> {
     let orders: Collection<mongodb::bson::Document> = db.collection("orders");
     let payments: Collection<mongodb::bson::Document> = db.collection("payments");
     let enrollments: Collection<mongodb::bson::Document> = db.collection("enrollments");
+    let lesson_progress: Collection<mongodb::bson::Document> = db.collection("lesson_progress");
 
     create_index(
         &companies,
@@ -102,6 +103,23 @@ pub async fn ensure_indexes(db: &Database) -> mongodb::error::Result<()> {
         IndexModel::builder()
             .keys(doc! { "companyId": 1, "courseId": 1, "learnerId": 1 })
             .options(IndexOptions::builder().unique(true).build())
+            .build(),
+    )
+    .await?;
+
+    create_index(
+        &lesson_progress,
+        IndexModel::builder()
+            .keys(doc! { "companyId": 1, "learnerId": 1, "lessonId": 1 })
+            .options(IndexOptions::builder().unique(true).build())
+            .build(),
+    )
+    .await?;
+
+    create_index(
+        &lesson_progress,
+        IndexModel::builder()
+            .keys(doc! { "companyId": 1, "courseId": 1, "learnerId": 1, "status": 1 })
             .build(),
     )
     .await?;

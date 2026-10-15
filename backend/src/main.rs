@@ -8,6 +8,7 @@ mod health;
 mod integrations;
 mod media;
 mod payments;
+mod progress;
 mod learning;
 mod routes;
 mod security;

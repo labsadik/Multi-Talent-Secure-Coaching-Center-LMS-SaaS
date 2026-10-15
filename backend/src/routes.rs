@@ -5,7 +5,7 @@ use axum::{
 };
 use serde_json::{json, Value};
 
-use crate::{auth, courses, health, learning, media, payments, state::AppState};
+use crate::{auth, courses, health, learning, media, payments, progress, state::AppState};
 
 pub fn router(state: AppState) -> Router {
     Router::new()
@@ -16,6 +16,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/auth/register-learner", post(auth::register_learner))
         .route("/api/v1/auth/login", post(auth::login))
         .route("/api/v1/auth/me", get(auth::me))
+        .route("/api/v1/me/courses", get(progress::my_courses))
         .route(
             "/api/v1/courses",
             get(courses::list_courses).post(courses::create_course),
@@ -51,6 +52,14 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/v1/lessons/{lesson_id}/playback",
             get(media::lesson_playback),
+        )
+        .route(
+            "/api/v1/lessons/{lesson_id}/progress",
+            put(progress::update_lesson_progress),
+        )
+        .route(
+            "/api/v1/courses/{course_id}/my-progress",
+            get(progress::my_course_progress),
         )
         .route(
             "/api/v1/assets/{asset_id}/download",
