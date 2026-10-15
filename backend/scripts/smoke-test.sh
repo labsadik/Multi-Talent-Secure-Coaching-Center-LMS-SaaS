@@ -17,24 +17,23 @@ TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 fail() {
-  printf 'FAIL: %s\n' "$*" >&2
-  if [[ -f "$TMP_DIR/body" ]]; then
-    cat "$TMP_DIR/body" >&2
-    printf '\n' >&2
-  fi
+  # Never print request arguments or response bodies: they may contain passwords,
+  # one-time access tokens, provider data, or other sensitive values.
+  printf 'FAIL: %s\n' "$1" >&2
   exit 1
 }
 
 http() {
   local expected_status="$1"
   shift
+  local target="${1:-<unknown>}"
   local actual_status
   if ! actual_status="$(curl --connect-timeout 3 --max-time 20 -sS \
     -D "$TMP_DIR/headers" -o "$TMP_DIR/body" -w '%{http_code}' "$@")"; then
-    fail "request failed: $*"
+    fail "request failed for $target"
   fi
   if [[ "$actual_status" != "$expected_status" ]]; then
-    fail "expected HTTP $expected_status, got $actual_status for $*"
+    fail "expected HTTP $expected_status, got $actual_status for $target"
   fi
 }
 
