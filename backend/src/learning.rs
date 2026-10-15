@@ -1046,6 +1046,136 @@ pub async fn delete_lesson(
 }
 
 
+async fn permanently_remove_assets(
+    state: &AppState,
+    company_id: &ObjectId,
+    filter: Document,
+) -> AppResult<()> {
+    let cursor = state.db.collection::<Document>("assets").find(filter).await?;
+    let assets: Vec<Document> = cursor.try_collect().await.map_err(AppError::from_mongo)?;
+    for asset in assets {
+        let id = asset.get_object_id("_id").map_err(|_| AppError::Internal)?.to_owned();
+        crate::media::permanently_delete_asset_record(state, company_id, &id).await?;
+    }
+    Ok(())
+}
+
+async fn permanently_remove_lesson_progress(
+    state: &AppState,
+    company_id: &ObjectId,
+    lesson_filter: Document,
+) -> AppResult<()> {
+    let cursor = state.db.collection::<Document>("lessons")
+        .find(lesson_filter).projection(doc! { "_id": 1 }).await?;
+    let lessons: Vec<Document> = cursor.try_collect().await.map_err(AppError::from_mongo)?;
+    let ids: Vec<ObjectId> = lessons.iter()
+        .filter_map(|lesson| lesson.get_object_id("_id").ok().map(|id| id.to_owned()))
+        .collect();
+    if !ids.is_empty() {
+        state.db.collection::<Document>("lesson_progress").delete_many(doc! {
+            "companyId": company_id.clone(),
+            "lessonId": { "$in": ids },
+        }).await?;
+    }
+    Ok(())
+}
+
+/// Permanently deletes a subject and its curriculum/media. Payment and enrollment
+/// history is deliberately retained; lesson progress for deleted lessons is removed.
+pub async fn permanently_delete_subject(
+    State(state): State<AppState>,
+    Path(subject_id): Path<String>,
+    auth: AuthUser,
+) -> AppResult<StatusCode> {
+    if !auth.can_manage_content() { return Err(AppError::Forbidden); }
+    let subject_id = parse_id(&subject_id)?;
+    let subject = state.db.collection::<Document>("subjects").find_one(doc! {
+        "_id": subject_id.clone(), "companyId": auth.company_id.clone(),
+    }).await?.ok_or(AppError::NotFound)?;
+    let course_id = subject.get_object_id("courseId").map_err(|_| AppError::Internal)?.to_owned();
+    if state.db.collection::<Document>("courses").find_one(doc! {
+        "_id": course_id.clone(), "companyId": auth.company_id.clone(),
+    }).await?.is_none() {
+        return Err(AppError::NotFound);
+    }
+
+    let subtree = doc! {
+        "companyId": auth.company_id.clone(),
+        "courseId": course_id.clone(),
+        "subjectId": subject_id.clone(),
+    };
+    permanently_remove_lesson_progress(&state, &auth.company_id, subtree.clone()).await?;
+    permanently_remove_assets(&state, &auth.company_id, subtree.clone()).await?;
+    for collection in ["lessons", "chapter_parts", "chapters", "topics", "subjects"] {
+        state.db.collection::<Document>(collection).delete_many(subtree.clone()).await?;
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Permanently deletes a chapter and its lessons/media while retaining course history.
+pub async fn permanently_delete_topic(
+    State(state): State<AppState>,
+    Path(topic_id): Path<String>,
+    auth: AuthUser,
+) -> AppResult<StatusCode> {
+    if !auth.can_manage_content() { return Err(AppError::Forbidden); }
+    let topic_id = parse_id(&topic_id)?;
+    let topic = state.db.collection::<Document>("topics").find_one(doc! {
+        "_id": topic_id.clone(), "companyId": auth.company_id.clone(),
+    }).await?.ok_or(AppError::NotFound)?;
+    let course_id = topic.get_object_id("courseId").map_err(|_| AppError::Internal)?.to_owned();
+    let subtree = doc! {
+        "companyId": auth.company_id.clone(),
+        "courseId": course_id,
+        "topicId": topic_id.clone(),
+    };
+    permanently_remove_lesson_progress(&state, &auth.company_id, subtree.clone()).await?;
+    permanently_remove_assets(&state, &auth.company_id, subtree.clone()).await?;
+    for collection in ["lessons", "chapter_parts", "chapters", "topics"] {
+        state.db.collection::<Document>(collection).delete_many(subtree.clone()).await?;
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Permanently deletes a lesson, its attached media and its progress records.
+pub async fn permanently_delete_lesson(
+    State(state): State<AppState>,
+    Path(lesson_id): Path<String>,
+    auth: AuthUser,
+) -> AppResult<StatusCode> {
+    if !auth.can_manage_content() { return Err(AppError::Forbidden); }
+    let lesson_id = parse_id(&lesson_id)?;
+    let lesson = state.db.collection::<Document>("lessons").find_one(doc! {
+        "_id": lesson_id.clone(), "companyId": auth.company_id.clone(),
+    }).await?.ok_or(AppError::NotFound)?;
+
+    let mut asset_ids: Vec<ObjectId> = Vec::new();
+    if let Ok(id) = lesson.get_object_id("mediaAssetId") {
+        asset_ids.push(id.to_owned());
+    }
+    let cursor = state.db.collection::<Document>("assets").find(doc! {
+        "companyId": auth.company_id.clone(), "lessonId": lesson_id.clone(),
+    }).await?;
+    let linked_assets: Vec<Document> = cursor.try_collect().await.map_err(AppError::from_mongo)?;
+    for asset in linked_assets {
+        if let Ok(id) = asset.get_object_id("_id") {
+            if !asset_ids.iter().any(|existing| existing == id) {
+                asset_ids.push(id.to_owned());
+            }
+        }
+    }
+    for asset_id in asset_ids {
+        crate::media::permanently_delete_asset_record(&state, &auth.company_id, &asset_id).await?;
+    }
+    state.db.collection::<Document>("lesson_progress").delete_many(doc! {
+        "companyId": auth.company_id.clone(), "lessonId": lesson_id.clone(),
+    }).await?;
+    state.db.collection::<Document>("lessons").delete_one(doc! {
+        "_id": lesson_id, "companyId": auth.company_id.clone(),
+    }).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub async fn list_chapters(
     State(state): State<AppState>,
     Path(topic_id): Path<String>,
