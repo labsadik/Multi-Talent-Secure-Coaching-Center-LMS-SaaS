@@ -521,7 +521,7 @@ async fn organize_simple_lesson_asset(
         "bunny_stream" => {
             let video_id = asset.get_str("providerVideoId").map(str::to_owned).map_err(|_| AppError::Internal)?;
             let stream = BunnyStream::from_settings(&state.settings, state.http.clone())?;
-            let already_attached = asset.get_object_id("lessonId").ok().is_some_and(|id| id == lesson_id);
+            let already_attached = asset.get_object_id("lessonId").ok().is_some_and(|id| id == *lesson_id);
             let collection_id = if already_attached {
                 asset.get_str("bunnyCollectionId").ok().filter(|value| !value.is_empty()).map(str::to_owned)
             } else {
@@ -1100,7 +1100,7 @@ pub async fn update_lesson(
         asset_filter.extend(asset_type_filter);
         let asset = state.db.collection::<Document>("assets").find_one(asset_filter).await?
             .ok_or(AppError::BadRequest("media asset does not belong to this topic or is not ready for attachment"))?;
-        if asset.get_object_id("lessonId").ok().is_some_and(|attached| attached != &lesson_id) {
+        if asset.get_object_id("lessonId").ok().is_some_and(|attached| attached != lesson_id) {
             return Err(AppError::BadRequest("this asset is already attached to another lesson"));
         }
         target_asset = Some(asset);
@@ -1308,7 +1308,7 @@ pub async fn permanently_delete_lesson(
     let linked_assets: Vec<Document> = cursor.try_collect().await.map_err(AppError::from_mongo)?;
     for asset in linked_assets {
         if let Ok(id) = asset.get_object_id("_id") {
-            if !asset_ids.iter().any(|existing| existing == id) {
+            if !asset_ids.iter().any(|existing| *existing == id) {
                 asset_ids.push(id.to_owned());
             }
         }
