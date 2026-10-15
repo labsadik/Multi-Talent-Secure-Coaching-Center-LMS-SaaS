@@ -1,10 +1,13 @@
 use axum::{
-    body::Bytes,
+    body::{Body, Bytes},
     extract::{Path, State},
-    http::{header, HeaderMap, StatusCode},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
+    response::Response,
     Json,
 };
 use mongodb::bson::{doc, oid::ObjectId, DateTime, Document};
+use sha2::{Digest, Sha256};
+use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -412,6 +415,7 @@ pub async fn refresh_video_status(
         3 | 4 | 9 | 10 => "ready",
         5 | 8 => "failed",
         6 => "uploading",
+        7 => "processing",
         _ => "processing",
     };
 
@@ -449,3 +453,259 @@ mod tests {
         assert!(!file_signature_matches("application/pdf", b"not a pdf"));
     }
 }
+
+async fn ensure_lesson_access(
+    state: &AppState,
+    auth: &AuthUser,
+    course_id: &ObjectId,
+    lesson: &Document,
+) -> AppResult<()> {
+    let course = state
+        .db
+        .collection::<Document>("courses")
+        .find_one(doc! {
+            "_id": course_id.clone(),
+            "companyId": auth.company_id.clone(),
+            "deletedAt": { "$exists": false },
+        })
+        .await?
+        .ok_or(AppError::NotFound)?;
+
+    if !auth.can_manage_content() && course.get_str("status").unwrap_or_default() != "published" {
+        return Err(AppError::NotFound);
+    }
+
+    if !auth.can_manage_content() {
+        let enrolled = state
+            .db
+            .collection::<Document>("enrollments")
+            .find_one(doc! {
+                "companyId": auth.company_id.clone(),
+                "courseId": course_id.clone(),
+                "learnerId": auth.user_id.clone(),
+                "status": "active",
+            })
+            .await?
+            .is_some();
+        if !enrolled && !lesson.get_bool("isPreview").unwrap_or(false) {
+            // Use the same response for unentitled lessons and non-existent lessons.
+            return Err(AppError::NotFound);
+        }
+    }
+    Ok(())
+}
+
+pub async fn lesson_playback(
+    State(state): State<AppState>,
+    Path(lesson_id): Path<String>,
+    auth: AuthUser,
+) -> AppResult<Json<Value>> {
+    let lesson_id = parse_path_id(&lesson_id)?;
+    let lesson = state
+        .db
+        .collection::<Document>("lessons")
+        .find_one(doc! {
+            "_id": lesson_id.clone(),
+            "companyId": auth.company_id.clone(),
+            "status": "active",
+            "deletedAt": { "$exists": false },
+        })
+        .await?
+        .ok_or(AppError::NotFound)?;
+    let course_id = lesson
+        .get_object_id("courseId")
+        .map_err(|_| AppError::Internal)?
+        .to_owned();
+    ensure_lesson_access(&state, &auth, &course_id, &lesson).await?;
+
+    let Some(asset_id) = lesson.get_object_id("mediaAssetId").ok().map(|id| id.to_owned()) else {
+        if lesson.get_str("lessonType").ok() == Some("text") {
+            return Ok(Json(json!({
+                "lessonId": lesson_id.to_hex(),
+                "lessonType": "text",
+                "content": lesson.get_str("content").unwrap_or_default()
+            })));
+        }
+        return Err(AppError::NotFound);
+    };
+
+    let asset = state
+        .db
+        .collection::<Document>("assets")
+        .find_one(doc! {
+            "_id": asset_id.clone(),
+            "companyId": auth.company_id.clone(),
+            "courseId": course_id.clone(),
+            "topicId": lesson.get_object_id("topicId").map_err(|_| AppError::Internal)?.to_owned(),
+            "status": "ready",
+            "deletedAt": { "$exists": false },
+        })
+        .await?
+        .ok_or(AppError::NotFound)?;
+
+    match asset.get_str("provider").unwrap_or_default() {
+        "bunny_stream" => {
+            let video_id = asset
+                .get_str("providerVideoId")
+                .map(str::to_owned)
+                .map_err(|_| AppError::Internal)?;
+            if video_id.is_empty()
+                || video_id.len() > 128
+                || !video_id.chars().all(|ch| ch.is_ascii_alphanumeric() || "-_".contains(ch))
+            {
+                return Err(AppError::Internal);
+            }
+            let library_id = state
+                .settings
+                .bunny_stream_library_id
+                .ok_or(AppError::ServiceUnavailable("Bunny Stream"))?;
+            if asset.get_i64("bunnyLibraryId").ok()
+                != i64::try_from(library_id).ok()
+            {
+                return Err(AppError::Forbidden);
+            }
+            let token_key = state
+                .settings
+                .bunny_stream_token_auth_key
+                .as_deref()
+                .filter(|key| !key.is_empty())
+                .ok_or(AppError::ServiceUnavailable("Bunny Stream token authentication"))?;
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_err(|_| AppError::Internal)?
+                .as_secs();
+            let expires = now.saturating_add(state.settings.bunny_playback_token_ttl_seconds);
+            let mut digest = Sha256::new();
+            digest.update(token_key.as_bytes());
+            digest.update(video_id.as_bytes());
+            digest.update(expires.to_string().as_bytes());
+            let token = hex::encode(digest.finalize());
+            let url = format!(
+                "https://iframe.mediadelivery.net/embed/{}/{}?token={}&expires={}",
+                library_id, video_id, token, expires
+            );
+            Ok(Json(json!({
+                "lessonId": lesson_id.to_hex(),
+                "assetId": asset_id.to_hex(),
+                "lessonType": "video",
+                "provider": "bunny_stream",
+                "playbackUrl": url,
+                "expiresAt": expires
+            })))
+        }
+        "bunny_storage" => {
+            let content_type = asset
+                .get_str("contentType")
+                .map(str::to_owned)
+                .map_err(|_| AppError::Internal)?;
+            if !matches!(
+                content_type.as_str(),
+                "image/jpeg" | "image/png" | "image/webp" | "image/gif" | "application/pdf"
+            ) {
+                return Err(AppError::Internal);
+            }
+            Ok(Json(json!({
+                "lessonId": lesson_id.to_hex(),
+                "assetId": asset_id.to_hex(),
+                "lessonType": lesson.get_str("lessonType").unwrap_or("file"),
+                "provider": "bunny_storage",
+                "downloadUrl": format!("/api/v1/assets/{}/download", asset_id.to_hex()),
+                "contentType": content_type
+            })))
+        }
+        _ => Err(AppError::NotFound),
+    }
+}
+
+pub async fn download_asset(
+    State(state): State<AppState>,
+    Path(asset_id): Path<String>,
+    auth: AuthUser,
+) -> AppResult<Response> {
+    let asset_id = parse_path_id(&asset_id)?;
+    let asset = state
+        .db
+        .collection::<Document>("assets")
+        .find_one(doc! {
+            "_id": asset_id.clone(),
+            "companyId": auth.company_id.clone(),
+            "provider": "bunny_storage",
+            "status": "ready",
+            "deletedAt": { "$exists": false },
+        })
+        .await?
+        .ok_or(AppError::NotFound)?;
+
+    let course_id = asset
+        .get_object_id("courseId")
+        .map_err(|_| AppError::Internal)?
+        .to_owned();
+    let topic_id = asset
+        .get_object_id("topicId")
+        .map_err(|_| AppError::Internal)?
+        .to_owned();
+    let lesson = state
+        .db
+        .collection::<Document>("lessons")
+        .find_one(doc! {
+            "companyId": auth.company_id.clone(),
+            "courseId": course_id.clone(),
+            "topicId": topic_id,
+            "mediaAssetId": asset_id.clone(),
+            "status": "active",
+            "deletedAt": { "$exists": false },
+        })
+        .await?
+        .ok_or(AppError::NotFound)?;
+    ensure_lesson_access(&state, &auth, &course_id, &lesson).await?;
+
+    let declared_size = asset.get_i64("sizeBytes").unwrap_or(-1);
+    if declared_size < 0 || declared_size as usize > state.settings.max_asset_upload_bytes {
+        return Err(AppError::Internal);
+    }
+    let content_type = asset
+        .get_str("contentType")
+        .map(str::to_owned)
+        .map_err(|_| AppError::Internal)?;
+    if !matches!(
+        content_type.as_str(),
+        "image/jpeg" | "image/png" | "image/webp" | "image/gif" | "application/pdf"
+    ) {
+        return Err(AppError::Internal);
+    }
+    let path = asset
+        .get_str("storagePath")
+        .map(str::to_owned)
+        .map_err(|_| AppError::Internal)?;
+    let storage = BunnyStorage::from_settings(&state.settings, state.http.clone())?;
+    let body = storage
+        .download_bytes(&path, state.settings.max_asset_upload_bytes)
+        .await?;
+
+    let extension = match content_type.as_str() {
+        "image/jpeg" => "jpg",
+        "image/png" => "png",
+        "image/webp" => "webp",
+        "image/gif" => "gif",
+        "application/pdf" => "pdf",
+        _ => "bin",
+    };
+    let content_type_header =
+        HeaderValue::from_str(&content_type).map_err(|_| AppError::Internal)?;
+    let disposition = HeaderValue::from_str(&format!(
+        "attachment; filename=\"asset-{}.{}\"",
+        asset_id.to_hex(),
+        extension
+    ))
+    .map_err(|_| AppError::Internal)?;
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, content_type_header)
+        .header(header::CONTENT_DISPOSITION, disposition)
+        .header(header::CACHE_CONTROL, "private, no-store")
+        .header("x-content-type-options", "nosniff")
+        .body(Body::from(body))
+        .map_err(|_| AppError::Internal)
+}
+

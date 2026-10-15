@@ -31,7 +31,7 @@ All runtime configuration is read from environment variables; a local .env is lo
 
 Required: APP_ENV, MONGODB_URI, MONGODB_DATABASE, JWT_SECRET, JWT_ISSUER, JWT_AUDIENCE, and CORS_ALLOWED_ORIGINS.
 
-Optional upload settings: `MAX_ASSET_UPLOAD_BYTES`, `BUNNY_TUS_ENDPOINT`, and `BUNNY_UPLOAD_SIGNATURE_TTL_SECONDS`. Direct browser video uploads use a short-lived TUS signature; the Bunny API key never leaves the server. Storage file uploads are streamed through the API and bounded by both request and asset size caps.
+Optional upload/playback settings: `MAX_ASSET_UPLOAD_BYTES`, `BUNNY_TUS_ENDPOINT`, `BUNNY_UPLOAD_SIGNATURE_TTL_SECONDS`, `BUNNY_STREAM_TOKEN_AUTH_KEY`, and `BUNNY_PLAYBACK_TOKEN_TTL_SECONDS`. Enable Embed View Token Authentication in the Bunny Stream library security settings before using signed playback. Direct browser video uploads use a short-lived TUS signature; the Bunny API key never leaves the server. Storage file uploads are streamed through the API and bounded by both request and asset size caps.
 
 A company’s Razorpay key ID, API secret, and webhook secret are submitted through its authenticated settings endpoint. Only encrypted API/webhook secrets are stored in MongoDB; `APP_ENCRYPTION_KEY_BASE64` is required to enable this and must be managed as a durable secret with a rotation/backup plan.
 

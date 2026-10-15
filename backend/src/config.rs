@@ -20,6 +20,8 @@ pub struct Settings {
     pub http_client_timeout_seconds: u64,
     pub bunny_tus_endpoint: String,
     pub bunny_upload_signature_ttl_seconds: u64,
+    pub bunny_stream_token_auth_key: Option<String>,
+    pub bunny_playback_token_ttl_seconds: u64,
     pub app_encryption_key: Option<[u8; 32]>,
     pub bunny_storage_zone: Option<String>,
     pub bunny_storage_api_key: Option<String>,
@@ -202,6 +204,19 @@ impl Settings {
             (3_600..=86_400).contains(&bunny_upload_signature_ttl_seconds),
             "BUNNY_UPLOAD_SIGNATURE_TTL_SECONDS must be between 3600 and 86400"
         );
+        let bunny_stream_token_auth_key = optional("BUNNY_STREAM_TOKEN_AUTH_KEY");
+        let bunny_playback_token_ttl_seconds =
+            parse_or("BUNNY_PLAYBACK_TOKEN_TTL_SECONDS", 3_600_u64)?;
+        ensure!(
+            (60..=86_400).contains(&bunny_playback_token_ttl_seconds),
+            "BUNNY_PLAYBACK_TOKEN_TTL_SECONDS must be between 60 and 86400"
+        );
+        if app_env == "production" && bunny_stream_library_id.is_some() {
+            ensure!(
+                bunny_stream_token_auth_key.is_some(),
+                "BUNNY_STREAM_TOKEN_AUTH_KEY is required in production when Bunny Stream is enabled"
+            );
+        }
 
         let razorpay_key_id = optional("RAZORPAY_KEY_ID");
         let razorpay_key_secret = optional("RAZORPAY_KEY_SECRET");
@@ -234,6 +249,8 @@ impl Settings {
             http_client_timeout_seconds,
             bunny_tus_endpoint,
             bunny_upload_signature_ttl_seconds,
+            bunny_stream_token_auth_key,
+            bunny_playback_token_ttl_seconds,
             app_encryption_key,
             bunny_storage_zone,
             bunny_storage_api_key,

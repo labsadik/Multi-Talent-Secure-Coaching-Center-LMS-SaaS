@@ -57,6 +57,38 @@ impl BunnyStorage {
         Ok(())
     }
 
+
+    /// Downloads a validated file through the server so private media does not need a public CDN URL.
+    pub async fn download_bytes(
+        &self,
+        relative_path: &str,
+        max_bytes: usize,
+    ) -> AppResult<Bytes> {
+        if !valid_relative_path(relative_path) {
+            return Err(AppError::BadRequest("invalid storage path"));
+        }
+        let url = format!("https://{}/{}/{}", self.host, self.zone, relative_path);
+        let response = self
+            .client
+            .get(url)
+            .header("AccessKey", &self.api_key)
+            .send()
+            .await?
+            .error_for_status()?;
+
+        if response
+            .content_length()
+            .is_some_and(|length| length > max_bytes as u64)
+        {
+            return Err(AppError::BadRequest("stored asset exceeds download limit"));
+        }
+        let bytes = response.bytes().await?;
+        if bytes.len() > max_bytes {
+            return Err(AppError::BadRequest("stored asset exceeds download limit"));
+        }
+        Ok(bytes)
+    }
+
     /// Builds a folder-style path from trusted IDs and validated slugs.
     pub fn course_topic_path(
         company_id: &str,

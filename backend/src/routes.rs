@@ -49,6 +49,14 @@ pub fn router(state: AppState) -> Router {
             post(media::refresh_video_status),
         )
         .route(
+            "/api/v1/lessons/{lesson_id}/playback",
+            get(media::lesson_playback),
+        )
+        .route(
+            "/api/v1/assets/{asset_id}/download",
+            get(media::download_asset),
+        )
+        .route(
             "/api/v1/company/integrations/razorpay",
             get(payments::get_razorpay_settings).put(payments::configure_razorpay),
         )
