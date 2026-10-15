@@ -171,6 +171,27 @@ pub async fn create_course_order(
         .await?
         .ok_or(AppError::NotFound)?;
 
+    let existing_enrollment = state
+        .db
+        .collection::<Document>("enrollments")
+        .find_one(doc! {
+            "companyId": auth.company_id.clone(),
+            "courseId": course_id.clone(),
+            "learnerId": auth.user_id.clone(),
+            "status": "active",
+        })
+        .await?;
+    if existing_enrollment.is_some() {
+        return Ok((
+            axum::http::StatusCode::OK,
+            Json(json!({
+                "enrolled": true,
+                "paymentRequired": false,
+                "courseId": course_id.to_hex()
+            })),
+        ));
+    }
+
     let amount = course.get_i64("priceInPaise").unwrap_or(0);
     if !(0..=100_000_000).contains(&amount) {
         return Err(AppError::BadRequest("course price is outside the supported range"));

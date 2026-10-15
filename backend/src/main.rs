@@ -21,7 +21,7 @@ use axum::{
     middleware,
 };
 use mongodb::{options::ClientOptions, Client};
-use std::{sync::Arc, time::Duration};
+use std::{net::SocketAddr, sync::Arc, time::Duration};
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
@@ -99,6 +99,10 @@ async fn main() -> anyhow::Result<()> {
         .layer(DefaultBodyLimit::max(settings.max_request_body_bytes))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
+        .layer(middleware::from_fn_with_state(
+            security::RateLimiter::default(),
+            security::rate_limit,
+        ))
         .layer(middleware::from_fn(security::secure_headers));
 
     let listener = TcpListener::bind((settings.host.as_str(), settings.port))
@@ -112,7 +116,7 @@ async fn main() -> anyhow::Result<()> {
         "Newage Rust API listening"
     );
 
-    axum::serve(listener, app)
+    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;
             tracing::info!("shutdown signal received");

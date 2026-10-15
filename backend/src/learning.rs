@@ -178,6 +178,7 @@ pub async fn list_subjects(
         doc! {
             "companyId": auth.company_id.clone(),
             "courseId": course_id,
+            "status": "active",
             "deletedAt": { "$exists": false },
         },
     )
@@ -257,6 +258,7 @@ pub async fn list_topics(
         doc! {
             "companyId": auth.company_id.clone(),
             "subjectId": subject_id,
+            "status": "active",
             "deletedAt": { "$exists": false },
         },
     )
@@ -342,17 +344,37 @@ pub async fn list_lessons(
         .get_object_id("courseId")
         .map_err(|_| AppError::Internal)?
         .to_owned();
-    visible_course(&state, &auth.company_id, &course_id, auth.can_manage_content()).await?;
+    let _course =
+        visible_course(&state, &auth.company_id, &course_id, auth.can_manage_content()).await?;
 
-    let items = load_list(
-        &state.db.collection::<Document>("lessons"),
-        doc! {
-            "companyId": auth.company_id.clone(),
-            "topicId": topic_id,
-            "deletedAt": { "$exists": false },
-        },
-    )
-    .await?;
+    let mut filter = doc! {
+        "companyId": auth.company_id.clone(),
+        "topicId": topic_id,
+        "status": "active",
+        "deletedAt": { "$exists": false },
+    };
+
+    // Published content is discoverable without enrollment, but the lesson body/media is not.
+    // Non-enrolled learners can retrieve only lessons explicitly marked as previews.
+    if !auth.can_manage_content() {
+        let enrolled = state
+            .db
+            .collection::<Document>("enrollments")
+            .find_one(doc! {
+                "companyId": auth.company_id.clone(),
+                "courseId": course_id,
+                "learnerId": auth.user_id.clone(),
+                "status": "active",
+            })
+            .await?
+            .is_some();
+
+        if !enrolled {
+            filter.insert("isPreview", true);
+        }
+    }
+
+    let items = load_list(&state.db.collection::<Document>("lessons"), filter).await?;
     Ok(Json(items))
 }
 

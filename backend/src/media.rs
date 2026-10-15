@@ -236,6 +236,17 @@ pub async fn create_video_ticket(
     ))
 }
 
+fn file_signature_matches(mime: &str, bytes: &[u8]) -> bool {
+    match mime {
+        "image/jpeg" => bytes.starts_with(&[0xFF, 0xD8, 0xFF]),
+        "image/png" => bytes.starts_with(b"\x89PNG\r\n\x1a\n"),
+        "image/webp" => bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP",
+        "image/gif" => bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a"),
+        "application/pdf" => bytes.starts_with(b"%PDF-"),
+        _ => false,
+    }
+}
+
 pub async fn upload_topic_file(
     State(state): State<AppState>,
     Path(topic_id): Path<String>,
@@ -276,6 +287,10 @@ pub async fn upload_topic_file(
             ));
         }
     };
+
+    if !file_signature_matches(&mime, body.as_ref()) {
+        return Err(AppError::BadRequest("file content does not match its declared Content-Type"));
+    }
 
     let topic_id = parse_path_id(&topic_id)?;
     let (topic, subject, course, company) =
@@ -420,4 +435,17 @@ pub async fn refresh_video_status(
         bunny_status: video.status,
         duration_seconds: video.length_seconds,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::file_signature_matches;
+
+    #[test]
+    fn rejects_mime_spoofing_and_accepts_known_signatures() {
+        assert!(file_signature_matches("image/png", b"\x89PNG\r\n\x1a\nrest"));
+        assert!(file_signature_matches("application/pdf", b"%PDF-1.7"));
+        assert!(!file_signature_matches("image/png", b"<script>alert(1)</script>"));
+        assert!(!file_signature_matches("application/pdf", b"not a pdf"));
+    }
 }
