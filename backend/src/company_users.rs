@@ -11,7 +11,7 @@ use crate::{
     auth::{hash_password, valid_email, AuthUser},
     error::{AppError, AppResult},
     state::AppState,
-    tenant::require_active_company,
+    tenant::{ensure_learner_capacity, require_active_company},
 };
 
 #[derive(Debug, Deserialize)]
@@ -129,6 +129,10 @@ pub async fn create_company_user(
     }
     if role == "admin" && auth.role != "owner" {
         return Err(AppError::Forbidden);
+    }
+    let company = require_active_company(&state.db, &auth.company_id).await?;
+    if role == "learner" {
+        ensure_learner_capacity(&state, &company, &auth.company_id).await?;
     }
 
     let user_id = ObjectId::new();

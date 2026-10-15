@@ -35,6 +35,14 @@ pub struct Settings {
     pub plan_starter_monthly_price_paise: i64,
     pub plan_pro_monthly_price_paise: i64,
     pub plan_business_monthly_price_paise: i64,
+    pub plan_free_max_courses: u64,
+    pub plan_free_max_learners: u64,
+    pub plan_starter_max_courses: u64,
+    pub plan_starter_max_learners: u64,
+    pub plan_pro_max_courses: u64,
+    pub plan_pro_max_learners: u64,
+    pub plan_business_max_courses: u64,
+    pub plan_business_max_learners: u64,
 }
 
 fn required(key: &'static str) -> Result<String> {
@@ -251,6 +259,27 @@ impl Settings {
             );
         }
 
+        let plan_free_max_courses = parse_or("PLAN_FREE_MAX_COURSES", 1_u64)?;
+        let plan_free_max_learners = parse_or("PLAN_FREE_MAX_LEARNERS", 50_u64)?;
+        let plan_starter_max_courses = parse_or("PLAN_STARTER_MAX_COURSES", 10_u64)?;
+        let plan_starter_max_learners = parse_or("PLAN_STARTER_MAX_LEARNERS", 500_u64)?;
+        let plan_pro_max_courses = parse_or("PLAN_PRO_MAX_COURSES", 50_u64)?;
+        let plan_pro_max_learners = parse_or("PLAN_PRO_MAX_LEARNERS", 5_000_u64)?;
+        let plan_business_max_courses = parse_or("PLAN_BUSINESS_MAX_COURSES", 500_u64)?;
+        let plan_business_max_learners = parse_or("PLAN_BUSINESS_MAX_LEARNERS", 50_000_u64)?;
+        for (name, limit) in [
+            ("PLAN_FREE_MAX_COURSES", plan_free_max_courses),
+            ("PLAN_FREE_MAX_LEARNERS", plan_free_max_learners),
+            ("PLAN_STARTER_MAX_COURSES", plan_starter_max_courses),
+            ("PLAN_STARTER_MAX_LEARNERS", plan_starter_max_learners),
+            ("PLAN_PRO_MAX_COURSES", plan_pro_max_courses),
+            ("PLAN_PRO_MAX_LEARNERS", plan_pro_max_learners),
+            ("PLAN_BUSINESS_MAX_COURSES", plan_business_max_courses),
+            ("PLAN_BUSINESS_MAX_LEARNERS", plan_business_max_learners),
+        ] {
+            ensure!((1..=1_000_000).contains(&limit), "{name} must be between 1 and 1000000");
+        }
+
         if app_env == "production" {
             ensure!(
                 cors_allowed_origins.iter().all(|origin| origin.starts_with("https://")),
@@ -300,6 +329,14 @@ impl Settings {
             plan_starter_monthly_price_paise,
             plan_pro_monthly_price_paise,
             plan_business_monthly_price_paise,
+            plan_free_max_courses,
+            plan_free_max_learners,
+            plan_starter_max_courses,
+            plan_starter_max_learners,
+            plan_pro_max_courses,
+            plan_pro_max_learners,
+            plan_business_max_courses,
+            plan_business_max_learners,
         })
     }
 }

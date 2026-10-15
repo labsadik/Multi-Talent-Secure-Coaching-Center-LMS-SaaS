@@ -38,6 +38,8 @@ Optional upload/playback settings: `MAX_ASSET_UPLOAD_BYTES`, `BUNNY_TUS_ENDPOINT
 
 A company’s Razorpay key ID, API secret, and webhook secret are submitted through its authenticated settings endpoint. Only encrypted API/webhook secrets are stored in MongoDB; `APP_ENCRYPTION_KEY_BASE64` is required to enable this and must be managed as a durable secret with a rotation/backup plan.
 
+Per-plan course/learner caps are read from `.env` using `PLAN_*_MAX_COURSES` and `PLAN_*_MAX_LEARNERS`; paid plans downgrade to free when the stored subscription expires.
+
 Platform billing reads `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`, and the three `PLAN_*_MONTHLY_PRICE_PAISE` values from `.env`. These are platform subscription credentials/prices; per-company course-payment credentials continue to be encrypted independently.
 
 Optional provider configuration must be supplied in matching pairs:
