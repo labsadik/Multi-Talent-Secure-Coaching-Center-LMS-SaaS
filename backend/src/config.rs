@@ -31,20 +31,6 @@ pub struct Settings {
     pub bunny_stream_api_key: Option<String>,
     /// Read-only API key for verifying signed Bunny Stream webhooks.
     pub bunny_stream_webhook_signing_key: Option<String>,
-    pub razorpay_key_id: Option<String>,
-    pub razorpay_key_secret: Option<String>,
-    pub razorpay_webhook_secret: Option<String>,
-    pub plan_starter_monthly_price_paise: i64,
-    pub plan_pro_monthly_price_paise: i64,
-    pub plan_business_monthly_price_paise: i64,
-    pub plan_free_max_courses: u64,
-    pub plan_free_max_learners: u64,
-    pub plan_starter_max_courses: u64,
-    pub plan_starter_max_learners: u64,
-    pub plan_pro_max_courses: u64,
-    pub plan_pro_max_learners: u64,
-    pub plan_business_max_courses: u64,
-    pub plan_business_max_learners: u64,
 }
 
 fn required(key: &'static str) -> Result<String> {
@@ -237,56 +223,6 @@ impl Settings {
             );
         }
 
-        let razorpay_key_id = optional("RAZORPAY_KEY_ID");
-        let razorpay_key_secret = optional("RAZORPAY_KEY_SECRET");
-        ensure!(
-            razorpay_key_id.is_some() == razorpay_key_secret.is_some(),
-            "RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET must be configured together"
-        );
-        let razorpay_webhook_secret = optional("RAZORPAY_WEBHOOK_SECRET");
-        ensure!(
-            razorpay_webhook_secret.is_none() || razorpay_key_id.is_some(),
-            "RAZORPAY_WEBHOOK_SECRET requires platform Razorpay credentials"
-        );
-
-        let plan_starter_monthly_price_paise =
-            parse_or("PLAN_STARTER_MONTHLY_PRICE_PAISE", 99_900_i64)?;
-        let plan_pro_monthly_price_paise =
-            parse_or("PLAN_PRO_MONTHLY_PRICE_PAISE", 199_900_i64)?;
-        let plan_business_monthly_price_paise =
-            parse_or("PLAN_BUSINESS_MONTHLY_PRICE_PAISE", 499_900_i64)?;
-        for (name, amount) in [
-            ("PLAN_STARTER_MONTHLY_PRICE_PAISE", plan_starter_monthly_price_paise),
-            ("PLAN_PRO_MONTHLY_PRICE_PAISE", plan_pro_monthly_price_paise),
-            ("PLAN_BUSINESS_MONTHLY_PRICE_PAISE", plan_business_monthly_price_paise),
-        ] {
-            ensure!(
-                (1..=100_000_000).contains(&amount),
-                "{name} must be between 1 and 100000000 paise"
-            );
-        }
-
-        let plan_free_max_courses = parse_or("PLAN_FREE_MAX_COURSES", 1_u64)?;
-        let plan_free_max_learners = parse_or("PLAN_FREE_MAX_LEARNERS", 50_u64)?;
-        let plan_starter_max_courses = parse_or("PLAN_STARTER_MAX_COURSES", 10_u64)?;
-        let plan_starter_max_learners = parse_or("PLAN_STARTER_MAX_LEARNERS", 500_u64)?;
-        let plan_pro_max_courses = parse_or("PLAN_PRO_MAX_COURSES", 50_u64)?;
-        let plan_pro_max_learners = parse_or("PLAN_PRO_MAX_LEARNERS", 5_000_u64)?;
-        let plan_business_max_courses = parse_or("PLAN_BUSINESS_MAX_COURSES", 500_u64)?;
-        let plan_business_max_learners = parse_or("PLAN_BUSINESS_MAX_LEARNERS", 50_000_u64)?;
-        for (name, limit) in [
-            ("PLAN_FREE_MAX_COURSES", plan_free_max_courses),
-            ("PLAN_FREE_MAX_LEARNERS", plan_free_max_learners),
-            ("PLAN_STARTER_MAX_COURSES", plan_starter_max_courses),
-            ("PLAN_STARTER_MAX_LEARNERS", plan_starter_max_learners),
-            ("PLAN_PRO_MAX_COURSES", plan_pro_max_courses),
-            ("PLAN_PRO_MAX_LEARNERS", plan_pro_max_learners),
-            ("PLAN_BUSINESS_MAX_COURSES", plan_business_max_courses),
-            ("PLAN_BUSINESS_MAX_LEARNERS", plan_business_max_learners),
-        ] {
-            ensure!((1..=1_000_000).contains(&limit), "{name} must be between 1 and 1000000");
-        }
-
         if app_env == "production" {
             ensure!(
                 cors_allowed_origins.iter().all(|origin| origin.starts_with("https://")),
@@ -296,12 +232,6 @@ impl Settings {
                 jwt_issuer.starts_with("https://"),
                 "JWT_ISSUER must use HTTPS in production"
             );
-            if razorpay_key_id.is_some() {
-                ensure!(
-                    razorpay_webhook_secret.is_some(),
-                    "RAZORPAY_WEBHOOK_SECRET is required in production when platform Razorpay is enabled"
-                );
-            }
         }
 
         Ok(Self {
@@ -331,20 +261,6 @@ impl Settings {
             bunny_stream_library_id,
             bunny_stream_api_key,
             bunny_stream_webhook_signing_key,
-            razorpay_key_id,
-            razorpay_key_secret,
-            razorpay_webhook_secret,
-            plan_starter_monthly_price_paise,
-            plan_pro_monthly_price_paise,
-            plan_business_monthly_price_paise,
-            plan_free_max_courses,
-            plan_free_max_learners,
-            plan_starter_max_courses,
-            plan_starter_max_learners,
-            plan_pro_max_courses,
-            plan_pro_max_learners,
-            plan_business_max_courses,
-            plan_business_max_learners,
         })
     }
 }
