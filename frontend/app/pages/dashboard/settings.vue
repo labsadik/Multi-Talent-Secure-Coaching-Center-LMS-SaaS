@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { apiErrorMessage } from '~/utils/api-error'
 
-definePageMeta({ middleware: 'auth' })
+definePageMeta({ middleware: ['auth', 'company-dashboard'], alias: ['/workspace/:companySlug/dashboard/settings'] })
 
 type RazorpaySettings = { configured: boolean; keyId?: string | null }
 type OrderResponse = {
@@ -19,7 +19,12 @@ declare global {
   }
 }
 
-const { currentUser, getRazorpaySettings, configureRazorpay, createSubscriptionOrder } = useAuth()
+const route = useRoute()
+const { currentCompany, currentUser, getRazorpaySettings, configureRazorpay, createSubscriptionOrder } = useAuth()
+function workspacePath(suffix = '') {
+  const slug = String(route.params.companySlug || currentCompany.value?.slug || '').trim()
+  return slug ? '/workspace/' + encodeURIComponent(slug) + '/dashboard' + suffix : '/dashboard' + suffix
+}
 const loading = ref(true)
 const saving = ref(false)
 const buyingPlan = ref('')
@@ -112,7 +117,7 @@ onMounted(() => { void loadSettings() })
 
 <template>
   <div class="min-h-screen bg-canvas">
-    <header class="border-b border-line bg-white"><div class="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-4 sm:px-6"><NuxtLink to="/dashboard" class="inline-flex items-center gap-3 font-semibold"><span class="grid h-10 w-10 place-items-center rounded-2xl bg-brand text-lg font-black text-white">N</span>newage<span class="text-brand">.</span></NuxtLink><NuxtLink to="/dashboard" class="rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-muted hover:bg-canvas">Workspace</NuxtLink></div></header>
+    <header class="border-b border-line bg-white"><div class="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-4 sm:px-6"><NuxtLink :to="workspacePath()" class="inline-flex items-center gap-3 font-semibold"><span class="grid h-10 w-10 place-items-center rounded-2xl bg-brand text-lg font-black text-white">N</span>newage<span class="text-brand">.</span></NuxtLink><NuxtLink :to="workspacePath()" class="rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-muted hover:bg-canvas">Workspace</NuxtLink></div></header>
     <main class="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10">
       <p class="text-xs font-bold uppercase tracking-[0.2em] text-brand">Workspace settings</p><h1 class="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Payments and plans.</h1><p class="mt-3 max-w-2xl text-sm leading-6 text-muted">Configure course checkout for your workspace and choose a Newage SaaS plan. Payment secrets are sent only to the Rust API.</p>
       <div v-if="errorMessage" role="alert" class="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700">{{ errorMessage }}</div><div v-if="message" role="status" class="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-800">{{ message }}</div>
