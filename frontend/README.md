@@ -30,8 +30,8 @@ The server-side API origin is NUXT_API_INTERNAL_BASE in frontend/.env. It is int
 - /register — creates a company workspace and owner account
 - /login — sign in for a workspace member
 - /learn/register — create a learner account within an existing workspace
-- /dashboard — workspace overview and course listing
-- /dashboard/courses/:courseId — subject/topic/lesson authoring, media upload, and lesson playback
+- /dashboard — workspace overview, course creation, metadata editing, publishing, and soft-archiving
+- /dashboard/courses/:courseId — subject/topic/lesson creation, editing, display ordering, soft-archiving, media upload, and lesson playback
 - /dashboard/learn — learner enrolments, course discovery, checkout, and progress
 - /dashboard/users — company member listing, invitations, roles, and disable/reactivate controls
 - /dashboard/settings — company Razorpay integration settings and SaaS plan checkout
@@ -57,6 +57,6 @@ Only public page configuration belongs in browser bundles. Never put MongoDB URI
 
 ## Product coverage and provider setup
 
-The dashboard covers the currently implemented API paths for courses, learning-content hierarchy, protected media upload/playback, learners, progress, company members, company Razorpay credentials, and subscription order creation. Media and billing actions require the matching Bunny/Razorpay credentials and dashboard/webhook setup in the backend; use provider sandbox credentials until the end-to-end callback and webhook flow has been verified.
+The dashboard supports course metadata editing and soft-archiving plus subject/topic/lesson editing, display order, and soft-archiving. Archiving hides content from active listings but retains historical enrolment and payment records. The dashboard also covers the currently implemented API paths for protected media upload/playback, learners, progress, company members, company Razorpay credentials, and subscription order creation. Media and billing actions require the matching Bunny/Razorpay credentials and dashboard/webhook setup in the backend; use provider sandbox credentials until the end-to-end callback and webhook flow has been verified.
 
 The subscription checkout UI relies on the authenticated Razorpay webhook as the activation source of truth. A checkout success screen by itself never grants a plan or course access.
