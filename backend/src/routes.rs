@@ -56,12 +56,20 @@ pub fn router(state: AppState) -> Router {
             patch(learning::update_subject).delete(learning::delete_subject),
         )
         .route(
+            "/api/v1/subjects/{subject_id}/permanent",
+            delete(learning::permanently_delete_subject),
+        )
+        .route(
             "/api/v1/subjects/{subject_id}/topics",
             get(learning::list_topics).post(learning::create_topic),
         )
         .route(
             "/api/v1/topics/{topic_id}",
             patch(learning::update_topic).delete(learning::delete_topic),
+        )
+        .route(
+            "/api/v1/topics/{topic_id}/permanent",
+            delete(learning::permanently_delete_topic),
         )
         .route(
             "/api/v1/topics/{topic_id}/lessons",
@@ -100,8 +108,20 @@ pub fn router(state: AppState) -> Router {
             get(media::list_topic_assets).put(media::upload_topic_file),
         )
         .route(
+            "/api/v1/assets/{asset_id}/archive",
+            post(media::archive_asset),
+        )
+        .route(
+            "/api/v1/assets/{asset_id}/permanent",
+            delete(media::permanently_delete_asset),
+        )
+        .route(
             "/api/v1/assets/{asset_id}/refresh-status",
             post(media::refresh_video_status),
+        )
+        .route(
+            "/api/v1/lessons/{lesson_id}/permanent",
+            delete(learning::permanently_delete_lesson),
         )
         .route(
             "/api/v1/lessons/{lesson_id}/playback",
