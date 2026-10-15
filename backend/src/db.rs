@@ -81,9 +81,13 @@ pub async fn ensure_indexes(db: &Database) -> mongodb::error::Result<()> {
 
     // Subject slugs should be unique among active subjects, not archived history.
     // Drop the legacy non-partial index once so archived subjects can be recreated.
-    let subject_index_names = subjects.list_index_names().await?;
-    if subject_index_names.iter().any(|name| name == "companyId_1_courseId_1_slug_1") {
-        subjects.drop_index("companyId_1_courseId_1_slug_1").await?;
+    // A fresh database may not have created the subjects collection yet.
+    let existing_collections = db.list_collection_names().await?;
+    if existing_collections.iter().any(|name| name == "subjects") {
+        let subject_index_names = subjects.list_index_names().await?;
+        if subject_index_names.iter().any(|name| name == "companyId_1_courseId_1_slug_1") {
+            subjects.drop_index("companyId_1_courseId_1_slug_1").await?;
+        }
     }
     create_index(
         &subjects,
