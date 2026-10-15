@@ -10,6 +10,8 @@ const {
   loadCurrentUser,
   getCourses,
   createCourse,
+  updateCourse,
+  deleteCourse,
   publishCourse,
   logout,
   clearSession,
@@ -19,6 +21,7 @@ const courses = ref<Course[]>([])
 const loading = ref(true)
 const busy = ref(false)
 const createOpen = ref(false)
+const editingCourseId = ref('')
 const pageError = ref('')
 const successMessage = ref('')
 const title = ref('')
@@ -86,19 +89,56 @@ async function submitCourse() {
       description: description.value.trim() || undefined,
       priceInPaise: Math.round(Number(priceRupees.value || 0) * 100),
     }
-    const created = await createCourse(payload)
-    courses.value = [created, ...courses.value]
+    if (editingCourseId.value) {
+      const updated = await updateCourse(editingCourseId.value, payload)
+      courses.value = courses.value.map((item) => item.id === updated.id ? updated : item)
+      successMessage.value = 'Course details saved.'
+    } else {
+      const created = await createCourse(payload)
+      courses.value = [created, ...courses.value]
+      successMessage.value = 'Course created as a draft.'
+    }
+    editingCourseId.value = ''
     title.value = ''
     slug.value = ''
     description.value = ''
     priceRupees.value = 0
     slugTouched.value = false
     createOpen.value = false
-    successMessage.value = 'Course created as a draft.'
   } catch (error) {
-    pageError.value = apiErrorMessage(error, 'The course could not be created. Check the fields and try again.')
+    pageError.value = apiErrorMessage(error, 'The course could not be saved. Check the fields and try again.')
   } finally {
     busy.value = false
+  }
+}
+
+function editCourse(course: Course) {
+  editingCourseId.value = course.id
+  title.value = course.title
+  slug.value = course.slug
+  description.value = course.description ?? ''
+  priceRupees.value = course.priceInPaise / 100
+  slugTouched.value = true
+  createOpen.value = true
+  pageError.value = ''
+  successMessage.value = ''
+  if (import.meta.client) window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+async function archiveCourse(course: Course) {
+  if (!import.meta.client || !window.confirm('Archive "' + course.title + '" and hide it from the course library? This keeps historical enrolment and payment records.')) return
+  pageError.value = ''
+  successMessage.value = ''
+  try {
+    await deleteCourse(course.id)
+    courses.value = courses.value.filter((item) => item.id !== course.id)
+    if (editingCourseId.value === course.id) {
+      editingCourseId.value = ''
+      createOpen.value = false
+    }
+    successMessage.value = 'Course archived.'
+  } catch (error) {
+    pageError.value = apiErrorMessage(error, 'The course could not be archived.')
   }
 }
 
@@ -199,8 +239,8 @@ onMounted(() => {
       <section v-if="createOpen && canManageContent" class="mt-7 rounded-3xl border border-brand/20 bg-white p-5 shadow-xl shadow-brand/5 sm:p-7">
         <div class="mb-6">
           <p class="text-xs font-bold uppercase tracking-[0.2em] text-brand">Course builder</p>
-          <h2 class="mt-2 text-xl font-semibold tracking-tight">Create a course</h2>
-          <p class="mt-1 text-sm text-muted">New courses start as drafts. Publish them when they are ready.</p>
+          <h2 class="mt-2 text-xl font-semibold tracking-tight">{{ editingCourseId ? 'Edit course details' : 'Create a course' }}</h2>
+          <p class="mt-1 text-sm text-muted">{{ editingCourseId ? 'Update the title, URL, description, or price. Existing course content stays in place.' : 'New courses start as drafts. Publish them when they are ready.' }}</p>
         </div>
         <form class="grid gap-5 md:grid-cols-2" @submit.prevent="submitCourse">
           <div>
@@ -224,8 +264,8 @@ onMounted(() => {
             <p class="mt-1.5 text-xs text-muted">Set to 0 for a free course.</p>
           </div>
           <div class="flex items-end gap-3">
-            <button type="submit" :disabled="busy" class="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:opacity-60">{{ busy ? 'Creating…' : 'Save as draft' }}</button>
-            <button type="button" class="min-h-11 rounded-xl border border-line px-4 py-3 text-sm font-semibold text-muted hover:bg-canvas" @click="createOpen = false">Cancel</button>
+            <button type="submit" :disabled="busy" class="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:opacity-60">{{ busy ? 'Saving…' : (editingCourseId ? 'Save changes' : 'Save as draft') }}</button>
+            <button type="button" class="min-h-11 rounded-xl border border-line px-4 py-3 text-sm font-semibold text-muted hover:bg-canvas" @click="createOpen = false; editingCourseId = ''">Cancel</button>
           </div>
         </form>
       </section>
@@ -250,10 +290,17 @@ onMounted(() => {
             <div class="flex flex-1 flex-col p-5">
               <NuxtLink :to="'/dashboard/courses/' + course.id" class="line-clamp-2 text-base font-semibold leading-6 transition hover:text-brand">{{ course.title }}</NuxtLink>
               <p class="mt-2 line-clamp-2 min-h-10 text-sm leading-5 text-muted">{{ course.description || 'A new learning experience, ready to take shape.' }}</p>
-              <div class="mt-5 flex items-center justify-between gap-3 border-t border-line pt-4">
-                <span class="text-sm font-semibold">{{ formatPrice(course.priceInPaise, course.currency) }}</span>
-                <button v-if="canManageContent && course.status !== 'published'" type="button" class="rounded-lg bg-brand-soft px-3 py-2 text-xs font-semibold text-brand transition hover:bg-brand hover:text-white" @click="publish(course)">Publish</button>
-                <span v-else class="text-xs font-medium text-muted">{{ course.status === 'published' ? 'Visible to learners' : 'Learner view' }}</span>
+              <div class="mt-5 flex flex-col gap-3 border-t border-line pt-4">
+                <div class="flex items-center justify-between gap-3">
+                  <span class="text-sm font-semibold">{{ formatPrice(course.priceInPaise, course.currency) }}</span>
+                  <span class="rounded-full px-2.5 py-1 text-[10px] font-semibold capitalize" :class="course.status === 'published' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'">{{ course.status }}</span>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <NuxtLink :to="'/dashboard/courses/' + course.id" class="rounded-lg bg-ink px-3 py-2 text-xs font-semibold text-white transition hover:bg-ink/80">Manage content</NuxtLink>
+                  <button v-if="canManageContent" type="button" class="rounded-lg border border-line px-3 py-2 text-xs font-semibold text-muted hover:border-brand hover:text-brand" @click="editCourse(course)">Edit details</button>
+                  <button v-if="canManageContent && course.status !== 'published'" type="button" class="rounded-lg bg-brand-soft px-3 py-2 text-xs font-semibold text-brand transition hover:bg-brand hover:text-white" @click="publish(course)">Publish</button>
+                  <button v-if="canManageContent" type="button" class="ml-auto rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-50" @click="archiveCourse(course)">Archive</button>
+                </div>
               </div>
             </div>
           </article>
