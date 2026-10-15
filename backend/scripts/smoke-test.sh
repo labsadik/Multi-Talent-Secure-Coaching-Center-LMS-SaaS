@@ -139,7 +139,7 @@ assert_json "$TMP_DIR/instructor-users.json" 'length == 1 and all(.[]; .role == 
 payload="$(jq -n --arg email "staff-blocked-$suffix@example.test" --arg password "$password" '{name:"Blocked Staff",email:$email,password:$password,role:"instructor"}')"
 http 403 "$BASE_URL/api/v1/company/users" -X POST -H "Authorization: Bearer $token_instructor" -H 'Content-Type: application/json' --data "$payload"
 payload="$(jq -n '{role:"instructor"}')"
-http 403 "$BASE_URL/api/v1/company/users/'"$managed_learner_id"'" -X PATCH -H "Authorization: Bearer $token_instructor" -H 'Content-Type: application/json' --data "$payload"
+http 403 "$BASE_URL/api/v1/company/users/$managed_learner_id" -X PATCH -H "Authorization: Bearer $token_instructor" -H 'Content-Type: application/json' --data "$payload"
 payload="$(jq -n '{status:"disabled"}')"
 http 200 "$BASE_URL/api/v1/company/users/$managed_learner_id" -X PATCH -H "Authorization: Bearer $token_instructor" -H 'Content-Type: application/json' --data "$payload"
 assert_json "$TMP_DIR/body" '.role == "learner" and .status == "disabled"' "instructor could not disable a learner"
@@ -148,6 +148,7 @@ assert_json "$TMP_DIR/body" '.role == "learner" and .status == "disabled"' "inst
 payload="$(jq -n --arg email "$admin_email" --arg password "$password" '{name:"Smoke Test Admin",email:$email,password:$password,role:"admin"}')"
 http 201 "$BASE_URL/api/v1/company/users" -X POST -H "Authorization: Bearer $token_a" -H 'Content-Type: application/json' --data "$payload"
 cp "$TMP_DIR/body" "$TMP_DIR/admin-created.json"
+admin_id="$(jq -er '.id | select(type == "string" and length > 0)' "$TMP_DIR/admin-created.json")"
 assert_json "$TMP_DIR/admin-created.json" '.role == "admin"' "owner could not create an admin"
 
 payload="$(jq -n --arg slug "$slug_a" --arg email "$admin_email" --arg password "$password" '{companySlug:$slug,email:$email,password:$password}')"
@@ -294,4 +295,4 @@ payload="$(jq -n --arg refreshToken "$refresh_a" '{refreshToken:$refreshToken}')
 http 204 "$BASE_URL/api/v1/auth/logout" -H 'Content-Type: application/json' --data "$payload"
 http 401 "$BASE_URL/api/v1/auth/refresh" -H 'Content-Type: application/json' --data "$payload"
 
-printf 'PASS: health, readiness, security headers, auth guard, registration/login, refresh/logout, learner RBAC, course lifecycle, and tenant isolation.\n'
+printf 'PASS: health, readiness, auth/session, learner/instructor/admin RBAC, course lifecycle, company settings, and tenant isolation.\\n'
