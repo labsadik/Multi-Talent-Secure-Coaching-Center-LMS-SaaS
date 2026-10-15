@@ -1,11 +1,11 @@
 use axum::{
     http::StatusCode,
-    routing::{get, post, put},
+    routing::{get, patch, post, put},
     Json, Router,
 };
 use serde_json::{json, Value};
 
-use crate::{auth, courses, health, learning, media, payments, progress, state::AppState};
+use crate::{auth, company_users, courses, health, learning, media, payments, progress, state::AppState};
 
 pub fn router(state: AppState) -> Router {
     Router::new()
@@ -17,6 +17,14 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/auth/login", post(auth::login))
         .route("/api/v1/auth/me", get(auth::me))
         .route("/api/v1/me/courses", get(progress::my_courses))
+        .route(
+            "/api/v1/company/users",
+            get(company_users::list_company_users).post(company_users::create_company_user),
+        )
+        .route(
+            "/api/v1/company/users/{user_id}",
+            patch(company_users::update_company_user),
+        )
         .route(
             "/api/v1/courses",
             get(courses::list_courses).post(courses::create_course),

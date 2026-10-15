@@ -1,5 +1,6 @@
 mod auth;
 mod config;
+mod company_users;
 mod courses;
 mod crypto;
 mod db;

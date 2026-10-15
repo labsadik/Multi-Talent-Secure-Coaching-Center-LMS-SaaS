@@ -10,6 +10,7 @@ This is the Rust backend foundation for the multi-tenant Newage LMS SaaS. The Nu
 - Company-owner and learner registration, password hashing with Argon2, tenant-scoped login, short-lived JWT access tokens with issuer/audience validation, and /auth/me.
 - Tenant-aware course creation/listing and course publishing. Learners only discover published courses; all course queries are filtered by the authenticated user's company ID.
 - Subject → Topic → Lesson APIs with tenant-scoped parent checks, content validation, ordering, and media-asset ownership checks for video/file lessons.
+- Tenant owner/admin company-user listing, creation, role updates and disable/enable with privilege-escalation checks.
 - Learner course enrollment listing, lesson progress updates, and per-course completion statistics backed by unique MongoDB indexes.
 - Tenant Razorpay credentials stored only as AES-256-GCM encrypted values, course order creation using server-side course prices, checkout signature + captured-payment verification, idempotent enrollment writes, and a signature-verified `payment.captured` webhook.
 - Bunny Storage topic-scoped image/PDF uploads, Bunny Stream per-course collection provisioning and time-limited TUS upload tickets, video encoding status sync, Razorpay platform order helper, and AES-256-GCM utility for tenant secrets.

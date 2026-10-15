@@ -457,7 +457,7 @@ fn issue_access_token(
     .map_err(|_| AppError::Internal)
 }
 
-fn hash_password(password: &str) -> AppResult<String> {
+pub fn hash_password(password: &str) -> AppResult<String> {
     let salt = SaltString::generate(&mut OsRng);
     Argon2::default()
         .hash_password(password.as_bytes(), &salt)
@@ -482,7 +482,7 @@ pub fn valid_slug(value: &str) -> bool {
         && !value.contains("--")
 }
 
-fn valid_email(value: &str) -> bool {
+pub fn valid_email(value: &str) -> bool {
     value.len() <= 254
         && value
             .split_once('@')
