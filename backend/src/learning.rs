@@ -717,9 +717,9 @@ pub async fn update_lesson(
     let sort_order = input.sort_order.unwrap_or(current.get_i32("sortOrder").unwrap_or(0));
     let media_asset_id = input.media_asset_id.as_deref().map(parse_id).transpose()?;
     let chapter_id = input.chapter_id.as_deref().map(parse_id).transpose()?
-        .or_else(|| current.get_object_id("chapterId").ok().cloned());
+        .or_else(|| current.get_object_id("chapterId").ok());
     let chapter_part_id = input.chapter_part_id.as_deref().map(parse_id).transpose()?
-        .or_else(|| current.get_object_id("chapterPartId").ok().cloned());
+        .or_else(|| current.get_object_id("chapterPartId").ok());
     let thumbnail_url = input.thumbnail_url.as_deref().map(str::trim).filter(|value| !value.is_empty()).map(str::to_owned)
         .or_else(|| current.get_str("thumbnailUrl").ok().map(str::to_owned));
     if thumbnail_url.as_ref().is_some_and(|url| !url.starts_with("https://") || url.len() > 2048) {
