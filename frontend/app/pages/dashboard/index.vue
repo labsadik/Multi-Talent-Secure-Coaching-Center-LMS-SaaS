@@ -2,7 +2,7 @@
 import type { Course, CreateCourseInput } from '~/types/api'
 import { apiErrorMessage } from '~/utils/api-error'
 
-definePageMeta({ middleware: ['auth', 'company-dashboard'], alias: ['/workspace/:companySlug/dashboard'] })
+definePageMeta({ middleware: ['auth', 'company-dashboard'] })
 
 const {
   currentUser,
@@ -18,6 +18,7 @@ const {
 } = useAuth()
 
 const route = useRoute()
+const { confirm } = useConfirmDialog()
 const courses = ref<Course[]>([])
 
 function workspacePath(suffix = '') {
@@ -55,6 +56,32 @@ watch(title, (value) => {
 
 function slugify(value: string) {
   return value.trim().toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80)
+}
+
+function openCreateCourse() {
+  editingCourseId.value = ''
+  title.value = ''
+  slug.value = ''
+  description.value = ''
+  thumbnailUrl.value = ''
+  priceRupees.value = 0
+  slugTouched.value = false
+  pageError.value = ''
+  successMessage.value = ''
+  createOpen.value = true
+}
+
+function onCourseModalChange(open: boolean) {
+  createOpen.value = open
+  if (!open) {
+    editingCourseId.value = ''
+    title.value = ''
+    slug.value = ''
+    description.value = ''
+    thumbnailUrl.value = ''
+    priceRupees.value = 0
+    slugTouched.value = false
+  }
 }
 
 function formatPrice(paise: number, currency = 'INR') {
@@ -132,11 +159,15 @@ function editCourse(course: Course) {
   createOpen.value = true
   pageError.value = ''
   successMessage.value = ''
-  if (import.meta.client) window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 async function archiveCourse(course: Course) {
-  if (!import.meta.client || !window.confirm('Archive "' + course.title + '" and hide it from the course library? This keeps historical enrolment and payment records.')) return
+  if (!await confirm({
+    title: 'Archive course?',
+    message: 'Archive "' + course.title + '" and hide it from the course library? Historical enrolment and payment records will be kept.',
+    confirmLabel: 'Archive course',
+    tone: 'danger',
+  })) return
   pageError.value = ''
   successMessage.value = ''
   try {
@@ -217,9 +248,9 @@ onMounted(() => {
           <h1 class="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Good things start here<span class="text-brand">.</span></h1>
           <p class="mt-3 text-sm leading-6 text-muted">A clear view of your course library and what is ready for learners.</p>
         </div>
-        <button v-if="canManageContent" type="button" class="inline-flex items-center justify-center gap-2 rounded-xl bg-brand px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-brand/20 transition hover:-translate-y-0.5 hover:bg-brand-dark" @click="createOpen = !createOpen">
+        <button v-if="canManageContent" type="button" class="inline-flex items-center justify-center gap-2 rounded-xl bg-brand px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-brand/20 transition hover:-translate-y-0.5 hover:bg-brand-dark" @click="openCreateCourse">
           <svg viewBox="0 0 20 20" fill="none" class="h-4 w-4" aria-hidden="true"><path d="M10 3.5v13M3.5 10h13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
-          {{ createOpen ? 'Close form' : 'Create a course' }}
+          Create a course
         </button>
       </div>
 
@@ -253,12 +284,13 @@ onMounted(() => {
         <NuxtLink v-if="currentCompany?.slug" :to="'/p/' + currentCompany.slug" target="_blank" class="group flex items-center gap-4 rounded-2xl border border-line bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-lg"><span class="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-emerald-100 text-xl text-emerald-700">↗</span><span class="min-w-0 flex-1"><strong class="block text-sm font-semibold">View public course catalogue</strong><span class="mt-1 block text-xs leading-5 text-muted">Open your company’s public learning page to share with learners.</span></span><span class="text-lg text-muted transition group-hover:translate-x-1">→</span></NuxtLink>
       </section>
 
-      <section v-if="createOpen && canManageContent" class="mt-7 rounded-3xl border border-brand/20 bg-white p-5 shadow-xl shadow-brand/5 sm:p-7">
-        <div class="mb-6">
-          <p class="text-xs font-bold uppercase tracking-[0.2em] text-brand">Course builder</p>
-          <h2 class="mt-2 text-xl font-semibold tracking-tight">{{ editingCourseId ? 'Edit course details' : 'Create a course' }}</h2>
-          <p class="mt-1 text-sm text-muted">{{ editingCourseId ? 'Update the title, URL, description, or price. Existing course content stays in place.' : 'New courses start as drafts. Publish them when they are ready.' }}</p>
-        </div>
+      <UiModal
+        :open="createOpen && canManageContent"
+        :title="editingCourseId ? 'Edit course details' : 'Create a course'"
+        :description="editingCourseId ? 'Update the title, URL, description, or price. Existing content stays in place.' : 'New courses start as drafts. Add the learning content, then publish when ready.'"
+        size="lg"
+        @update:open="onCourseModalChange"
+      >
         <form class="grid gap-5 md:grid-cols-2" @submit.prevent="submitCourse">
           <div>
             <label for="courseTitle" class="mb-2 block text-sm font-semibold">Course title</label>
@@ -286,7 +318,7 @@ onMounted(() => {
             <button type="button" class="min-h-11 rounded-xl border border-line px-4 py-3 text-sm font-semibold text-muted hover:bg-canvas" @click="createOpen = false; editingCourseId = ''">Cancel</button>
           </div>
         </form>
-      </section>
+      </UiModal>
 
       <section class="mt-8">
         <div class="mb-5 flex items-center justify-between gap-3">
@@ -329,7 +361,7 @@ onMounted(() => {
           <div class="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-brand-soft text-brand"><svg viewBox="0 0 24 24" fill="none" class="h-7 w-7" aria-hidden="true"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4H20v15H6.5A2.5 2.5 0 0 0 4 21V6.5ZM4 18.5A2.5 2.5 0 0 1 6.5 16H20" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg></div>
           <h3 class="mt-4 text-lg font-semibold">Your course library starts here</h3>
           <p class="mx-auto mt-2 max-w-md text-sm leading-6 text-muted">{{ canManageContent ? 'Create your first course draft, add the learning content, then publish it when you are ready.' : 'There are no published courses available in this workspace yet.' }}</p>
-          <button v-if="canManageContent" type="button" class="mt-6 rounded-xl bg-brand px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-dark" @click="createOpen = true">Create your first course</button>
+          <button v-if="canManageContent" type="button" class="mt-6 rounded-xl bg-brand px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-dark" @click="openCreateCourse">Create your first course</button>
         </div>
       </section>
 

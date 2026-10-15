@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { apiErrorMessage } from '~/utils/api-error'
 
-definePageMeta({ middleware: ['auth', 'company-dashboard'], alias: ['/workspace/:companySlug/dashboard/settings'] })
+definePageMeta({ middleware: ['auth', 'company-dashboard'] })
 
 const route = useRoute()
 const { currentCompany, currentUser, getRazorpaySettings, configureRazorpay } = useAuth()

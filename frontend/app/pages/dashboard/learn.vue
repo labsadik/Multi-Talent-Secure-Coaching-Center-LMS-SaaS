@@ -2,7 +2,7 @@
 import type { Course, LearnerCourse } from '~/types/api'
 import { apiErrorMessage } from '~/utils/api-error'
 
-definePageMeta({ middleware: ['auth', 'company-dashboard'], alias: ['/workspace/:companySlug/dashboard/learn'] })
+definePageMeta({ middleware: ['auth', 'company-dashboard'] })
 
 type OrderResponse = {
   enrolled?: boolean
