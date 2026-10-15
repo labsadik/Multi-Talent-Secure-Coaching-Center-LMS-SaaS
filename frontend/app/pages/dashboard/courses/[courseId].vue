@@ -18,11 +18,11 @@ interface SubjectView extends ContentItem {
 const route = useRoute()
 const {
   currentUser, currentCompany,
-  getCourses, getSubjects, createSubject, updateSubject, deleteSubject,
-  getTopics, createTopic, updateTopic, deleteTopic,
-  getLessons, createLesson, updateLesson, deleteLesson,
+  getCourses, getSubjects, createSubject, updateSubject, deleteSubject, permanentlyDeleteSubject,
+  getTopics, createTopic, updateTopic, deleteTopic, permanentlyDeleteTopic,
+  getLessons, createLesson, updateLesson, deleteLesson, permanentlyDeleteLesson,
   getChapters, getChapterParts, getChapterPartLessons,
-  getTopicAssets, uploadAsset, createVideoTicket, refreshAssetStatus,
+  getTopicAssets, uploadAsset, createVideoTicket, archiveAsset, permanentlyDeleteAsset, refreshAssetStatus,
   getMyCourses, getPlayback, updateLessonProgress,
 } = useAuth()
 
@@ -120,6 +120,17 @@ function availableAssets(chapter: ChapterView) {
       ? asset.assetType === 'video'
       : asset.assetType === 'image' || asset.assetType === 'file'
   })
+}
+function selectedLessonAsset(chapter: ChapterView) {
+  return chapter.assets.find(asset => asset.id === lessonAssetId.value)
+}
+function selectedLessonStatusLabel(chapter: ChapterView) {
+  const asset = selectedLessonAsset(chapter)
+  return asset ? statusLabel(asset) : ''
+}
+function lessonMediaDisplayName(file: File) {
+  const extension = file.name.includes('.') ? file.name.slice(file.name.lastIndexOf('.')) : ''
+  return (lessonTitle.value.trim() || file.name.replace(/\.[^.]+$/, '')) + extension
 }
 function resetLessonForm() {
   activeLessonChapterId.value = ''
@@ -262,6 +273,15 @@ async function removeSubject(subject: SubjectView) {
     await loadOutline(false)
   } catch (error) { pageError.value = apiErrorMessage(error, 'Subject could not be archived.') }
 }
+async function permanentlyRemoveSubject(subject: SubjectView) {
+  if (!import.meta.client || !window.confirm('Permanently delete "' + subject.title + '" and all its chapters, lessons and media? This cannot be undone. Enrollment/payment records are retained, but lesson progress for deleted lessons is removed.')) return
+  resetMessages()
+  try {
+    await permanentlyDeleteSubject(subject.id)
+    successMessage.value = 'Subject permanently deleted.'
+    await loadOutline(false)
+  } catch (error) { pageError.value = apiErrorMessage(error, 'Subject could not be permanently deleted.') }
+}
 function openChapterForm(subject: SubjectView) {
   cancelChapterForm()
   chapterFormSubjectId.value = subject.id
@@ -298,6 +318,17 @@ async function removeChapter(chapter: ChapterView) {
     successMessage.value = 'Chapter archived.'
     await loadOutline(false)
   } catch (error) { pageError.value = apiErrorMessage(error, 'Chapter could not be archived.') }
+}
+async function permanentlyRemoveChapter(chapter: ChapterView) {
+  if (!import.meta.client || !window.confirm('Permanently delete "' + chapter.title + '", its lessons and attached media? This cannot be undone. Enrollment/payment records are retained, but lesson progress for deleted lessons is removed.')) return
+  resetMessages()
+  try {
+    await permanentlyDeleteTopic(chapter.id)
+    if (expandedChapterId.value === chapter.id) expandedChapterId.value = ''
+    if (activeLessonChapterId.value === chapter.id) resetLessonForm()
+    successMessage.value = 'Chapter permanently deleted.'
+    await loadOutline(false)
+  } catch (error) { pageError.value = apiErrorMessage(error, 'Chapter could not be permanently deleted.') }
 }
 async function saveLesson(chapter: ChapterView) {
   resetMessages()
@@ -336,11 +367,40 @@ async function removeLesson(lesson: ContentItem) {
     await loadOutline(false)
   } catch (error) { pageError.value = apiErrorMessage(error, 'Lesson could not be archived.') }
 }
-async function uploadStorageFile(chapter: ChapterView, event: Event) {
+async function permanentlyRemoveLesson(lesson: ContentItem) {
+  if (!import.meta.client || !window.confirm('Permanently delete "' + lesson.title + '" and its attached media? This cannot be undone. Learner progress for this lesson will be removed.')) return
+  resetMessages()
+  try {
+    await permanentlyDeleteLesson(lesson.id)
+    successMessage.value = 'Lesson permanently deleted.'
+    await loadOutline(false)
+  } catch (error) { pageError.value = apiErrorMessage(error, 'Lesson could not be permanently deleted.') }
+}
+async function removeMediaAsset(asset: TopicAsset, permanently = false) {
+  if (!import.meta.client) return
+  const prompt = permanently
+    ? 'Permanently delete "' + asset.title + '" from Bunny and the media library? This cannot be undone.'
+    : 'Archive "' + asset.title + '"? It will no longer be available to attach to lessons.'
+  if (!window.confirm(prompt)) return
+  resetMessages()
+  try {
+    if (permanently) await permanentlyDeleteAsset(asset.id)
+    else await archiveAsset(asset.id)
+    successMessage.value = permanently ? 'Media permanently deleted.' : 'Media archived.'
+    await loadOutline(false)
+  } catch (error) {
+    pageError.value = apiErrorMessage(error, permanently ? 'Media could not be permanently deleted.' : 'Media could not be archived.')
+  }
+}
+async function uploadStorageFile(chapter: ChapterView, event: Event, insideLesson = false) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   input.value = ''
   if (!file) return
+  if (insideLesson && lessonTitle.value.trim().length < 2) {
+    pageError.value = 'Enter the lesson title first so the uploaded media is saved with that lesson name.'
+    return
+  }
   if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf'].includes(file.type)) {
     pageError.value = 'Choose a JPG, PNG, WebP, GIF image or PDF file.'
     return
@@ -350,17 +410,27 @@ async function uploadStorageFile(chapter: ChapterView, event: Event) {
     return
   }
   resetMessages()
-  uploadActivity.value = { chapterId: chapter.id, kind: 'file', filename: file.name }
+  uploadActivity.value = { chapterId: chapter.id, kind: 'file', filename: insideLesson ? lessonMediaDisplayName(file) : file.name }
   uploadProgress.value = 0
   try {
-    await uploadAsset(chapter.id, file, undefined, percent => { uploadProgress.value = percent })
-    successMessage.value = file.name + ' uploaded to Bunny Storage and is ready to attach.'
+    const result = await uploadAsset(
+      chapter.id, file, undefined, percent => { uploadProgress.value = percent },
+      insideLesson ? lessonMediaDisplayName(file) : undefined,
+    )
+    if (insideLesson) {
+      const id = String(result.assetId || '')
+      if (!id) throw new Error('Bunny Storage did not return the uploaded media ID.')
+      lessonAssetId.value = id
+    }
     await loadOutline(false)
+    successMessage.value = insideLesson
+      ? lessonMediaDisplayName(file) + ' is attached to this lesson form and ready. Save the lesson once to finish.'
+      : file.name + ' uploaded to Bunny Storage and is ready to attach.'
   } catch (error) {
     pageError.value = apiErrorMessage(error, 'File upload failed. Check Bunny Storage configuration and try again.')
   } finally { uploadActivity.value = null }
 }
-async function uploadVideo(chapter: ChapterView, event: Event) {
+async function uploadVideo(chapter: ChapterView, event: Event, insideLesson = false) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   input.value = ''
@@ -369,16 +439,24 @@ async function uploadVideo(chapter: ChapterView, event: Event) {
     pageError.value = 'Choose a video file for Bunny Stream.'
     return
   }
+  const videoTitle = insideLesson ? lessonTitle.value.trim() : file.name.replace(/\.[^.]+$/, '')
+  if (insideLesson && videoTitle.length < 2) {
+    pageError.value = 'Enter the lesson title first. Bunny Stream will use that title automatically.'
+    return
+  }
   resetMessages()
-  uploadActivity.value = { chapterId: chapter.id, kind: 'video', filename: file.name }
+  uploadActivity.value = { chapterId: chapter.id, kind: 'video', filename: videoTitle }
   uploadProgress.value = 0
+  let createdAssetId = ''
   try {
-    const ticket = await createVideoTicket(chapter.id, file.name.replace(/\.[^.]+$/, '')) as unknown as {
+    const ticket = await createVideoTicket(chapter.id, videoTitle) as unknown as {
       assetId: string
       status: string
       upload: { endpoint: string; videoId: string; libraryId: number; authorizationSignature: string; authorizationExpire: number }
     }
     if (!ticket.assetId || !ticket.upload?.endpoint) throw new Error('Bunny Stream did not return a valid upload ticket.')
+    createdAssetId = ticket.assetId
+    if (insideLesson) lessonAssetId.value = ticket.assetId
     const tusModule = await import('tus-js-client')
     await new Promise<void>((resolve, reject) => {
       const upload = new tusModule.Upload(file, {
@@ -389,7 +467,7 @@ async function uploadVideo(chapter: ChapterView, event: Event) {
           VideoId: ticket.upload.videoId,
           LibraryId: String(ticket.upload.libraryId),
         },
-        metadata: { filename: file.name, filetype: file.type || 'application/octet-stream' },
+        metadata: { filename: videoTitle, filetype: file.type || 'application/octet-stream' },
         retryDelays: [0, 1000, 3000, 5000],
         onError: reject,
         onProgress: (sent, total) => { uploadProgress.value = total ? Math.round(sent / total * 100) : 0 },
@@ -398,9 +476,12 @@ async function uploadVideo(chapter: ChapterView, event: Event) {
       upload.start()
     })
     await loadOutline(false)
-    successMessage.value = 'Upload finished. Bunny Stream is processing the video; it can be attached after it becomes Ready.'
+    successMessage.value = insideLesson
+      ? 'Video uploaded. It is linked to "' + videoTitle + '" and will remain Processing until Bunny marks it Ready.'
+      : 'Upload finished. Bunny Stream is processing the video; it can be attached after it becomes Ready.'
     void refreshAllVideoStatuses()
   } catch (error) {
+    if (insideLesson && lessonAssetId.value === createdAssetId) lessonAssetId.value = ''
     pageError.value = apiErrorMessage(error, 'Video upload failed. Confirm Bunny Stream settings and retry.')
   } finally {
     uploadActivity.value = null
@@ -534,7 +615,7 @@ onMounted(async () => {
                 <span class="min-w-0 flex-1"><span class="block truncate text-base font-semibold">{{ subject.title }}</span><span class="mt-1 block text-xs text-slate-500">{{ subject.chapters.length }} chapters · {{ subject.chapters.reduce((sum, chapter) => sum + chapter.lessons.length, 0) }} lessons</span></span>
                 <span class="pr-1 text-lg text-slate-400">{{ expandedSubjectId === subject.id ? '−' : '+' }}</span>
               </button>
-              <div v-if="isManager" class="flex shrink-0 gap-2"><button type="button" class="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700" @click="editSubject(subject)">Edit</button><button type="button" class="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700" @click="removeSubject(subject)">Archive</button></div>
+              <div v-if="isManager" class="flex shrink-0 gap-2"><button type="button" class="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700" @click="editSubject(subject)">Edit</button><button type="button" class="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700" @click="removeSubject(subject)">Archive</button><button type="button" class="rounded-lg border border-red-300 px-3 py-1.5 text-xs font-semibold text-red-800" @click="permanentlyRemoveSubject(subject)">Delete</button></div>
             </div>
 
             <div v-if="expandedSubjectId === subject.id" class="space-y-3 p-3 sm:p-5">
@@ -549,6 +630,7 @@ onMounted(async () => {
                   <div v-if="isManager" class="flex flex-wrap gap-2">
                     <button type="button" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:border-blue-400" @click="editChapter(subject.id, chapter)">Edit chapter</button>
                     <button type="button" class="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700" @click="removeChapter(chapter)">Archive chapter</button>
+                    <button type="button" class="rounded-lg border border-red-300 px-3 py-2 text-xs font-semibold text-red-800" @click="permanentlyRemoveChapter(chapter)">Delete</button>
                     <button type="button" class="ml-auto rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-800" @click="openLessonForm(chapter)">+ Add lesson</button>
                   </div>
 
@@ -560,7 +642,7 @@ onMounted(async () => {
                         <span v-if="lesson.lessonType === 'video'" class="absolute bottom-1.5 right-1.5 grid h-7 w-7 place-items-center rounded-full bg-slate-950/80 text-xs text-white">▶</span>
                       </button>
                       <div class="min-w-0 flex-1"><button type="button" class="text-left text-sm font-semibold hover:text-blue-700" @click="openLesson(lesson)">{{ lessonIndex + 1 }}. {{ lesson.title }}</button><p class="mt-1 text-xs capitalize text-slate-500">{{ lesson.lessonType || 'text' }}<span v-if="lesson.durationSeconds"> · {{ Math.ceil(lesson.durationSeconds / 60) }} min</span><span v-if="lesson.isPreview"> · Preview</span></p></div>
-                      <div class="flex flex-wrap gap-2"><button type="button" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:border-blue-400" @click="openLesson(lesson)">{{ isManager ? 'Preview' : 'Open lesson' }}</button><button v-if="isManager" type="button" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700" @click="editLesson(chapter, lesson)">Edit</button><button v-if="isManager" type="button" class="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700" @click="removeLesson(lesson)">Archive</button><button v-if="isLearner" type="button" :disabled="busyLessonId === lesson.id" class="rounded-lg bg-emerald-100 px-3 py-2 text-xs font-semibold text-emerald-800 disabled:opacity-50" @click="markComplete(lesson)">{{ busyLessonId === lesson.id ? 'Saving…' : 'Mark complete' }}</button></div>
+                      <div class="flex flex-wrap gap-2"><button type="button" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:border-blue-400" @click="openLesson(lesson)">{{ isManager ? 'Preview' : 'Open lesson' }}</button><button v-if="isManager" type="button" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700" @click="editLesson(chapter, lesson)">Edit</button><button v-if="isManager" type="button" class="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700" @click="removeLesson(lesson)">Archive</button><button v-if="isManager" type="button" class="rounded-lg border border-red-300 px-3 py-2 text-xs font-semibold text-red-800" @click="permanentlyRemoveLesson(lesson)">Delete</button><button v-if="isLearner" type="button" :disabled="busyLessonId === lesson.id" class="rounded-lg bg-emerald-100 px-3 py-2 text-xs font-semibold text-emerald-800 disabled:opacity-50" @click="markComplete(lesson)">{{ busyLessonId === lesson.id ? 'Saving…' : 'Mark complete' }}</button></div>
                     </article>
                   </div>
                   <p v-else class="rounded-xl border border-dashed border-slate-200 px-4 py-7 text-center text-sm text-slate-500">No lessons yet. Add the first lesson to this chapter.</p>
@@ -576,7 +658,36 @@ onMounted(async () => {
                     <div><label for="lessonThumbnail" class="mb-1.5 block text-xs font-semibold text-slate-600">Thumbnail image URL (optional)</label><input id="lessonThumbnail" v-model="lessonThumbnailUrl" type="url" maxlength="2048" placeholder="https://cdn.example.com/lesson-cover.jpg" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100" /><p class="mt-1 text-[11px] leading-5 text-slate-500">Video thumbnails are provided by Bunny when available. You may set a custom HTTPS image.</p></div>
                     <div v-if="lessonType === 'text'"><label for="lessonContent" class="mb-1.5 block text-xs font-semibold text-slate-600">Lesson content</label><textarea id="lessonContent" v-model="lessonContent" required rows="4" maxlength="50000" placeholder="Write the lesson content…" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm leading-6 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100" /></div>
                     <template v-else>
-                      <div><label :for="'asset-' + chapter.id" class="mb-1.5 block text-xs font-semibold text-slate-600">Ready media from Bunny</label><select :id="'asset-' + chapter.id" v-model="lessonAssetId" required class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm"><option value="" disabled>Select a ready {{ lessonType === 'video' ? 'video' : 'PDF/image' }}</option><option v-for="asset in availableAssets(chapter)" :key="asset.id" :value="asset.id">{{ asset.title }} · {{ asset.status }}</option></select><p v-if="!availableAssets(chapter).length" class="mt-1 text-xs text-slate-500">Upload the media below. It appears here when Ready.</p></div>
+                      <div v-if="selectedLessonAsset(chapter)" class="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-3">
+                        <div class="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-slate-100 text-xs font-bold">{{ selectedLessonAsset(chapter)?.assetType === 'video' ? '▶' : selectedLessonAsset(chapter)?.assetType === 'file' ? 'PDF' : 'IMG' }}</div>
+                        <div class="min-w-0 flex-1">
+                          <p class="break-words text-sm font-semibold">{{ selectedLessonAsset(chapter)?.title }}</p>
+                          <p class="mt-1 text-xs text-slate-500">{{ selectedLessonAsset(chapter)?.provider === 'bunny_stream' ? 'Bunny Stream' : 'Bunny Storage' }} · {{ selectedLessonStatusLabel(chapter) }}</p>
+                          <div v-if="selectedLessonAsset(chapter)?.assetType === 'video' && ['uploading', 'processing'].includes(selectedLessonAsset(chapter)?.status || '')" class="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100"><div class="h-full rounded-full bg-violet-600 transition-all" :style="{ width: (selectedLessonAsset(chapter)?.status === 'processing' ? (selectedLessonAsset(chapter)?.encodeProgress ?? 5) : 5) + '%' }" /></div>
+                          <p v-if="selectedLessonAsset(chapter)?.assetType === 'video' && selectedLessonAsset(chapter)?.status !== 'ready'" class="mt-1 text-xs text-violet-700">The lesson can be saved now. Students can play the video after Bunny marks it Ready.</p>
+                        </div>
+                        <button type="button" class="text-xs font-semibold text-slate-500 underline" @click="lessonAssetId = ''">Change</button>
+                      </div>
+                      <div v-else>
+                        <label :for="'asset-' + chapter.id" class="mb-1.5 block text-xs font-semibold text-slate-600">Use an existing ready media file</label>
+                        <select :id="'asset-' + chapter.id" v-model="lessonAssetId" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm"><option value="">Select a ready {{ lessonType === 'video' ? 'video' : 'PDF/image' }}</option><option v-for="asset in availableAssets(chapter)" :key="asset.id" :value="asset.id">{{ asset.title }} · Ready</option></select>
+                      </div>
+                      <div class="grid gap-3 sm:grid-cols-2">
+                        <label class="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 hover:border-blue-400" :class="{ 'pointer-events-none opacity-50': !!uploadActivity || lessonTitle.trim().length < 2 }">
+                          <span class="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-xs font-bold">PDF</span><span class="min-w-0 flex-1"><span class="block text-sm font-semibold">Upload PDF or image</span><span class="block text-xs text-slate-500">Bunny Storage · saved as the lesson name</span></span>
+                          <input type="file" accept="image/jpeg,image/png,image/webp,image/gif,application/pdf" class="sr-only" :disabled="!!uploadActivity || lessonTitle.trim().length < 2" @change="uploadStorageFile(chapter, $event, true)" />
+                        </label>
+                        <label class="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 hover:border-violet-400" :class="{ 'pointer-events-none opacity-50': !!uploadActivity || lessonTitle.trim().length < 2 }">
+                          <span class="grid h-9 w-9 place-items-center rounded-lg bg-violet-100 text-xs font-bold text-violet-800">▶</span><span class="min-w-0 flex-1"><span class="block text-sm font-semibold">Upload lesson video</span><span class="block text-xs text-slate-500">Bunny Stream · lesson title auto-applied</span></span>
+                          <input type="file" accept="video/*" class="sr-only" :disabled="!!uploadActivity || lessonTitle.trim().length < 2" @change="uploadVideo(chapter, $event, true)" />
+                        </label>
+                      </div>
+                      <div v-if="uploadActivity?.chapterId === chapter.id && activeLessonChapterId === chapter.id" class="rounded-lg bg-white p-3">
+                        <div class="flex items-center justify-between gap-3 text-xs"><span class="min-w-0 truncate font-medium">{{ uploadActivity.filename }}</span><span class="shrink-0 font-semibold">{{ uploadProgress }}%</span></div>
+                        <div class="mt-2 h-2 overflow-hidden rounded-full bg-slate-200"><div class="h-full rounded-full bg-blue-700 transition-all" :style="{ width: uploadProgress + '%' }" /></div>
+                        <p class="mt-2 text-xs text-slate-500">{{ uploadActivity.kind === 'video' ? 'Uploading to Bunny Stream… Encoding status will update automatically.' : 'Uploading to Bunny Storage…' }}</p>
+                      </div>
+                      <p class="text-xs leading-5 text-slate-500">The uploaded media is linked to this lesson form. Save the lesson once; video name and lesson name stay in sync, and Bunny processing continues in the background.</p>
                     </template>
                     <label class="flex items-center gap-2 text-xs text-slate-600"><input v-model="lessonPreview" type="checkbox" class="h-4 w-4 rounded border-slate-300 accent-blue-700" /> Allow preview before enrolment</label>
                     <div class="flex flex-wrap gap-2"><button type="submit" :disabled="saving" class="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{{ saving ? 'Saving…' : (editingLesson ? 'Save lesson' : 'Create lesson') }}</button><button type="button" class="rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700" @click="resetLessonForm">Cancel</button></div>
@@ -588,7 +699,7 @@ onMounted(async () => {
                       <label class="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 px-3 py-3 hover:border-blue-400"><span class="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-xs font-bold">PDF</span><span class="min-w-0 flex-1"><span class="block text-sm font-semibold">Upload image or PDF</span><span class="block text-xs text-slate-500">JPG, PNG, WebP, GIF, PDF · max 20 MB</span></span><input type="file" accept="image/jpeg,image/png,image/webp,image/gif,application/pdf" class="sr-only" :disabled="!!uploadActivity" @change="uploadStorageFile(chapter, $event)" /></label>
                       <label class="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 px-3 py-3 hover:border-blue-400"><span class="grid h-9 w-9 place-items-center rounded-lg bg-violet-100 text-xs font-bold text-violet-800">▶</span><span class="min-w-0 flex-1"><span class="block text-sm font-semibold">Upload video</span><span class="block text-xs text-slate-500">Bunny Stream · processing tracked</span></span><input type="file" accept="video/*" class="sr-only" :disabled="!!uploadActivity" @change="uploadVideo(chapter, $event)" /></label>
                     </div>
-                    <div v-if="uploadActivity?.chapterId === chapter.id" class="mt-4 rounded-lg bg-slate-50 p-3">
+                    <div v-if="uploadActivity?.chapterId === chapter.id && activeLessonChapterId !== chapter.id" class="mt-4 rounded-lg bg-slate-50 p-3">
                       <div class="flex items-center justify-between gap-3 text-xs"><span class="min-w-0 truncate font-medium">{{ uploadActivity.filename }}</span><span class="shrink-0 font-semibold">{{ uploadProgress }}%</span></div>
                       <div class="mt-2 h-2 overflow-hidden rounded-full bg-slate-200"><div class="h-full rounded-full bg-blue-700 transition-all" :style="{ width: uploadProgress + '%' }" /></div>
                       <p class="mt-2 text-xs text-slate-500">{{ uploadActivity.kind === 'video' ? 'Uploading video to Bunny Stream…' : 'Uploading file to Bunny Storage…' }}</p>
@@ -598,6 +709,11 @@ onMounted(async () => {
                         <div class="flex items-start gap-3"><span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-slate-100 text-[10px] font-bold">{{ asset.assetType === 'video' ? '▶' : asset.assetType === 'file' ? 'PDF' : 'IMG' }}</span><div class="min-w-0 flex-1"><p class="break-words text-xs font-semibold">{{ asset.title }}</p><p class="mt-1 text-[11px] text-slate-500">{{ asset.provider === 'bunny_stream' ? 'Bunny Stream' : 'Bunny Storage' }}<span v-if="asset.sizeBytes"> · {{ formatSize(asset.sizeBytes) }}</span><span v-if="asset.assetType === 'video' && asset.status === 'processing'"> · {{ asset.encodeProgress ?? 0 }}% encoded</span></p></div><span class="shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold" :class="statusClass(asset.status)">{{ statusLabel(asset) }}</span></div>
                         <div v-if="asset.assetType === 'video' && ['uploading', 'processing'].includes(asset.status)" class="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100"><div class="h-full rounded-full bg-violet-600 transition-all" :style="{ width: (asset.status === 'processing' ? (asset.encodeProgress ?? 5) : 5) + '%' }" /></div>
                         <p v-if="asset.status === 'failed'" class="mt-2 text-xs text-red-700">Bunny reported a processing failure. Upload the video again after checking the source file.</p>
+                        <div v-if="!asset.lessonId" class="mt-3 flex flex-wrap gap-2">
+                          <button type="button" class="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600" @click="removeMediaAsset(asset, false)">Archive media</button>
+                          <button type="button" class="rounded-lg border border-red-200 px-2.5 py-1.5 text-[11px] font-semibold text-red-700" @click="removeMediaAsset(asset, true)">Delete media</button>
+                        </div>
+                        <p v-else class="mt-3 text-[11px] text-slate-500">Attached to a lesson. Replace or delete it from that lesson to keep the curriculum and media in sync.</p>
                       </article>
                     </div>
                     <p v-else class="mt-3 text-xs text-slate-500">No media uploaded to this chapter yet.</p>

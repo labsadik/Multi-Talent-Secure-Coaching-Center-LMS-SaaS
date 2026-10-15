@@ -104,6 +104,39 @@ impl BunnyStorage {
         Ok(())
     }
 
+    /// Builds the simplified LMS path: company/course/subject/chapter/lesson/file.
+    pub fn simple_lesson_content_path(
+        company_id: &str,
+        company_slug: &str,
+        course_id: &str,
+        course_slug: &str,
+        subject_id: &str,
+        subject_slug: &str,
+        topic_id: &str,
+        topic_slug: &str,
+        lesson_id: &str,
+        lesson_slug: &str,
+        category: &str,
+        filename: &str,
+    ) -> AppResult<String> {
+        let segments = [
+            company_id, company_slug, course_id, course_slug, subject_id, subject_slug,
+            topic_id, topic_slug, lesson_id, lesson_slug, category, filename,
+        ];
+        if !segments.iter().all(|part| valid_path_segment(part)) {
+            return Err(AppError::BadRequest("invalid lesson storage path segment"));
+        }
+        let path = format!(
+            "companies/{}-{}/courses/{}-{}/subjects/{}-{}/chapters/{}-{}/lessons/{}-{}/{}/{}",
+            company_id, company_slug, course_id, course_slug, subject_id, subject_slug,
+            topic_id, topic_slug, lesson_id, lesson_slug, category, filename
+        );
+        if !valid_relative_path(&path) {
+            return Err(AppError::BadRequest("invalid lesson storage path"));
+        }
+        Ok(path)
+    }
+
     /// Builds a tenant-scoped storage path with optional chapter, chapter-part and lesson folders.
     /// IDs provide stable isolation; slugs make the Bunny Storage zone easy to browse.
     pub fn course_content_path(
@@ -221,6 +254,19 @@ mod tests {
         assert_eq!(
             path,
             "companies/company123-acme/courses/course123-foundations/subjects/subject123-math/parts/part123-algebra/chapters/chapter123-equations/chapter-parts/chapterpart123-worked-examples/lessons/lesson123-linear-equations/assets/asset123.pdf"
+        );
+    }
+
+    #[test]
+    fn simplified_lesson_path_keeps_media_inside_the_named_lesson() {
+        let path = BunnyStorage::simple_lesson_content_path(
+            "company123", "acme", "course123", "foundations",
+            "subject123", "math", "chapter123", "algebra",
+            "lesson123", "linear-equations", "assets", "asset123.pdf",
+        ).expect("valid simplified lesson path");
+        assert_eq!(
+            path,
+            "companies/company123-acme/courses/course123-foundations/subjects/subject123-math/chapters/chapter123-algebra/lessons/lesson123-linear-equations/assets/asset123.pdf"
         );
     }
 
