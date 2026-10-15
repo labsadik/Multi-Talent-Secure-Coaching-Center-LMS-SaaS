@@ -30,6 +30,7 @@ const busyCourse = ref('')
 const errorMessage = ref('')
 const successMessage = ref('')
 const checkoutBusy = ref(false)
+const requestedCheckoutCourse = ref<Course | null>(null)
 
 const isLearner = computed(() => currentUser.value?.role === 'learner')
 const enrolledIds = computed(() => new Set(enrolled.value.map((item) => item.courseId)))
@@ -126,10 +127,19 @@ onMounted(async () => {
   await load()
   const requestedCourseId = typeof route.query.checkoutCourse === 'string' ? route.query.checkoutCourse : ''
   if (requestedCourseId) {
-    const requestedCourse = courses.value.find((course) => course.id === requestedCourseId)
-    if (requestedCourse && !enrolledIds.value.has(requestedCourse.id)) await enroll(requestedCourse)
+    requestedCheckoutCourse.value = courses.value.find((course) => course.id === requestedCourseId && !enrolledIds.value.has(course.id)) ?? null
+    if (!requestedCheckoutCourse.value && enrolledIds.value.has(requestedCourseId)) {
+      successMessage.value = 'You already have access to this course.'
+    }
   }
 })
+
+async function continueRequestedCheckout() {
+  const course = requestedCheckoutCourse.value
+  if (!course) return
+  await enroll(course)
+  if (!errorMessage.value) requestedCheckoutCourse.value = null
+}
 </script>
 
 <template>
@@ -147,6 +157,11 @@ onMounted(async () => {
 
       <div v-if="errorMessage" role="alert" class="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700">{{ errorMessage }}</div>
       <div v-if="successMessage" role="status" class="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-800">{{ successMessage }}</div>
+
+      <section v-if="requestedCheckoutCourse" class="mt-6 flex flex-col justify-between gap-4 rounded-2xl border border-brand/20 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:p-6">
+        <div class="min-w-0"><p class="text-xs font-bold uppercase tracking-[0.16em] text-brand">Selected from the company public page</p><h2 class="mt-1 text-lg font-semibold">{{ requestedCheckoutCourse.title }}</h2><p class="mt-1 text-sm leading-6 text-muted">{{ requestedCheckoutCourse.priceInPaise === 0 ? 'This course is free. Confirm to add it to your learning list.' : 'Continue to the company payment checkout. Payment is verified by the API before access is granted.' }}</p></div>
+        <button type="button" :disabled="busyCourse === requestedCheckoutCourse.id || checkoutBusy" class="shrink-0 rounded-xl bg-brand px-5 py-3 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-60" @click="continueRequestedCheckout">{{ busyCourse === requestedCheckoutCourse.id || checkoutBusy ? 'Processing…' : (requestedCheckoutCourse.priceInPaise === 0 ? 'Confirm free enrolment' : 'Continue to secure payment') }}</button>
+      </section>
 
       <section class="mt-10">
         <div class="mb-5 flex items-end justify-between gap-3"><div><h2 class="text-xl font-semibold">Continue learning</h2><p class="mt-1 text-sm text-muted">Courses you already have access to.</p></div><span class="rounded-full border border-line bg-white px-3 py-1.5 text-xs font-semibold text-muted">{{ enrolled.length }} enrolled</span></div>
