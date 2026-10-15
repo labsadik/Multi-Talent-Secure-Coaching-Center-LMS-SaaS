@@ -127,6 +127,18 @@ function bytesLabel(bytes: number) {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
+async function copyUrl(value: string) {
+  if (!import.meta.client) return
+  try {
+    await navigator.clipboard.writeText(value)
+    successMessage.value = 'Public asset URL copied.'
+    errorMessage.value = ''
+  } catch {
+    errorMessage.value = 'Clipboard access is unavailable. Copy the URL from the asset details manually.'
+    successMessage.value = ''
+  }
+}
+
 async function loadOutline() {
   loading.value = true
   errorMessage.value = ''
@@ -658,7 +670,7 @@ onMounted(() => { void loadOutline() })
                           <img v-if="asset.assetType === 'image' && asset.publicUrl" :src="asset.publicUrl" :alt="asset.title" class="h-14 w-14 shrink-0 rounded-lg border border-line object-cover" />
                           <div v-else class="grid h-14 w-14 shrink-0 place-items-center rounded-lg bg-canvas text-[10px] font-bold uppercase text-muted">{{ asset.assetType }}</div>
                           <div class="min-w-0 flex-1"><p class="truncate text-xs font-semibold" :title="asset.title">{{ asset.title }}</p><p class="mt-1 truncate font-mono text-[10px] text-muted">{{ asset.id }}</p><div class="mt-1 flex flex-wrap items-center gap-1.5"><span class="rounded bg-canvas px-1.5 py-0.5 text-[10px] capitalize text-muted">{{ asset.status }}</span><span class="text-[10px] text-muted">{{ asset.contentType || asset.provider }}<span v-if="asset.sizeBytes"> · {{ bytesLabel(asset.sizeBytes) }}</span></span></div>
-                            <div class="mt-2 flex flex-wrap gap-1.5"><button type="button" :disabled="asset.assetType !== 'video' && asset.status !== 'ready'" class="rounded-md border border-line px-2 py-1 text-[10px] font-semibold disabled:opacity-40" @click="selectAsset(topic.id, asset)">Use in lesson</button><button v-if="asset.assetType === 'video' && asset.status !== 'ready'" type="button" class="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-900" @click="refreshVideo(asset.id)">Refresh status</button><button v-if="asset.assetType === 'image'" type="button" class="rounded-md border border-line px-2 py-1 text-[10px] font-semibold" @click="useAssetAsLessonThumbnail(asset)">Use as lesson thumb</button><button v-if="asset.assetType === 'image'" type="button" class="rounded-md border border-line px-2 py-1 text-[10px] font-semibold" @click="useAssetAsCourseThumbnail(asset)">Set course cover</button><button v-if="asset.publicUrl" type="button" class="rounded-md border border-line px-2 py-1 text-[10px] font-semibold text-brand" @click="GenUI.copy(asset.publicUrl)">Copy public URL</button></div>
+                            <div class="mt-2 flex flex-wrap gap-1.5"><button type="button" :disabled="asset.assetType !== 'video' && asset.status !== 'ready'" class="rounded-md border border-line px-2 py-1 text-[10px] font-semibold disabled:opacity-40" @click="selectAsset(topic.id, asset)">Use in lesson</button><button v-if="asset.assetType === 'video' && asset.status !== 'ready'" type="button" class="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-900" @click="refreshVideo(asset.id)">Refresh status</button><button v-if="asset.assetType === 'image'" type="button" class="rounded-md border border-line px-2 py-1 text-[10px] font-semibold" @click="useAssetAsLessonThumbnail(asset)">Use as lesson thumb</button><button v-if="asset.assetType === 'image'" type="button" class="rounded-md border border-line px-2 py-1 text-[10px] font-semibold" @click="useAssetAsCourseThumbnail(asset)">Set course cover</button><button v-if="asset.publicUrl" type="button" class="rounded-md border border-line px-2 py-1 text-[10px] font-semibold text-brand" @click="copyUrl(asset.publicUrl)">Copy public URL</button></div>
                           </div>
                         </article>
                       </div>
