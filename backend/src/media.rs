@@ -549,18 +549,25 @@ pub async fn refresh_video_status(
         _ => "processing",
     };
 
+    let mut updated_fields = doc! {
+        "status": status,
+        "bunnyStatus": video.status,
+        "durationSeconds": video.length_seconds,
+        "encodeProgress": video.encode_progress,
+        "updatedAt": DateTime::now(),
+    };
+    if let Some(filename) = video.thumbnail_file_name.as_deref() {
+        if !filename.is_empty()
+            && filename.len() <= 128
+            && filename.chars().all(|ch| ch.is_ascii_alphanumeric() || "._-".contains(ch))
+        {
+            updated_fields.insert("thumbnailFileName", filename);
+        }
+    }
     assets
         .update_one(
             doc! { "_id": asset_id.clone(), "companyId": auth.company_id.clone() },
-            doc! {
-                "$set": {
-                    "status": status,
-                    "bunnyStatus": video.status,
-                    "durationSeconds": video.length_seconds,
-                    "encodeProgress": video.encode_progress,
-                    "updatedAt": DateTime::now(),
-                }
-            },
+            doc! { "$set": updated_fields },
         )
         .await?;
 
@@ -909,7 +916,7 @@ pub async fn download_asset(
     let content_type_header =
         HeaderValue::from_str(&content_type).map_err(|_| AppError::Internal)?;
     let disposition = HeaderValue::from_str(&format!(
-        "attachment; filename=\"asset-{}.{}\"",
+        "inline; filename=\"asset-{}.{}\"",
         asset_id.to_hex(),
         extension
     ))
