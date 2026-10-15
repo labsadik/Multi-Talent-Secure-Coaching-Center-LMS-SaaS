@@ -5,7 +5,7 @@ definePageMeta({ layout: 'marketing' })
 
 const route = useRoute()
 const companySlug = computed(() => String(route.params.companySlug || ''))
-const { currentUser, loadCurrentUser } = useAuth()
+const { currentUser, currentCompany, loadCurrentUser } = useAuth()
 const { data: page, pending, error } = await useAsyncData<PublicCompanyPage>(
   () => 'public-company-' + companySlug.value,
   () => $fetch<PublicCompanyPage>('/api/public/companies/' + encodeURIComponent(companySlug.value)),
@@ -14,9 +14,23 @@ const brandStyle = computed(() => ({
   '--site-brand': page.value?.site.brandColor || '#2563eb',
   '--site-accent': page.value?.site.accentColor || '#14b8a6',
 }))
+const currentCompanyMatches = computed(() =>
+  currentCompany.value?.slug?.trim().toLowerCase() === companySlug.value.trim().toLowerCase(),
+)
+function learnerRegistrationPath() {
+  const slug = page.value?.company.slug || companySlug.value
+  return '/workspace/' + encodeURIComponent(slug) + '/register'
+}
 function courseAction(courseId: string) {
-  if (currentUser.value?.role === 'learner') return '/dashboard/learn?checkoutCourse=' + encodeURIComponent(courseId)
-  return '/learn/register?companySlug=' + encodeURIComponent(companySlug.value) + '&courseId=' + encodeURIComponent(courseId)
+  const slug = page.value?.company.slug || companySlug.value
+  if (currentUser.value && currentCompanyMatches.value) {
+    return currentUser.value.role === 'learner'
+      ? '/dashboard/learn?checkoutCourse=' + encodeURIComponent(courseId)
+      : '/dashboard'
+  }
+  // Public visitors must sign in through this tenant's login. The login page
+  // carries the selected course forward to either checkout or learner signup.
+  return '/workspace/' + encodeURIComponent(slug) + '/login?courseId=' + encodeURIComponent(courseId)
 }
 function formatPrice(paise: number, currency = 'INR') {
   return paise === 0 ? 'Free' : new Intl.NumberFormat('en-IN', {
@@ -45,7 +59,7 @@ onMounted(async () => {
           <nav class="flex shrink-0 items-center gap-2 sm:gap-3" aria-label="Company page navigation">
             <a href="#courses" class="hidden rounded-xl px-4 py-2.5 text-sm font-semibold text-muted hover:bg-canvas sm:inline-flex">Courses</a>
             <NuxtLink :to="'/workspace/' + encodeURIComponent(page.company.slug) + '/login'" class="rounded-xl border border-line px-3 py-2.5 text-xs font-semibold sm:px-4 sm:text-sm">Company sign in</NuxtLink>
-            <NuxtLink :to="'/learn/register?companySlug=' + encodeURIComponent(page.company.slug)" class="rounded-xl px-3 py-2.5 text-xs font-semibold text-white sm:px-4 sm:text-sm" :style="{ backgroundColor: page.site.brandColor }">Join to learn</NuxtLink>
+            <NuxtLink :to="learnerRegistrationPath()" class="rounded-xl px-3 py-2.5 text-xs font-semibold text-white sm:px-4 sm:text-sm" :style="{ backgroundColor: page.site.brandColor }">Join to learn</NuxtLink>
           </nav>
         </div>
       </header>
@@ -61,7 +75,7 @@ onMounted(async () => {
               <h1 class="mt-6 max-w-3xl text-4xl font-semibold leading-[1.08] tracking-tight text-white sm:text-5xl lg:text-6xl">{{ page.site.headline }}</h1>
               <p class="mt-5 max-w-2xl text-base leading-7 text-white/80 sm:text-lg">{{ page.site.tagline }}</p>
               <p v-if="page.site.about" class="mt-5 max-w-2xl text-sm leading-7 text-white/70">{{ page.site.about }}</p>
-              <div class="mt-8 flex flex-wrap gap-3"><a href="#courses" class="inline-flex items-center gap-2 rounded-xl px-5 py-3.5 text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5" :style="{ backgroundColor: page.site.accentColor }">Explore courses <span aria-hidden="true">→</span></a><NuxtLink :to="'/learn/register?companySlug=' + encodeURIComponent(page.company.slug)" class="inline-flex rounded-xl border border-white/25 bg-white/10 px-5 py-3.5 text-sm font-semibold text-white hover:bg-white/15">Create learner account</NuxtLink></div>
+              <div class="mt-8 flex flex-wrap gap-3"><a href="#courses" class="inline-flex items-center gap-2 rounded-xl px-5 py-3.5 text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5" :style="{ backgroundColor: page.site.accentColor }">Explore courses <span aria-hidden="true">→</span></a><NuxtLink :to="learnerRegistrationPath()" class="inline-flex rounded-xl border border-white/25 bg-white/10 px-5 py-3.5 text-sm font-semibold text-white hover:bg-white/15">Create learner account</NuxtLink></div>
               <div class="mt-10 flex flex-wrap items-center gap-5 text-xs font-medium text-white/65"><span>{{ page.courses.length }} published courses</span><span class="h-1 w-1 rounded-full bg-white/40" /><span>Secure course access</span><span v-if="page.site.contactEmail" class="h-1 w-1 rounded-full bg-white/40" /><a v-if="page.site.contactEmail" :href="'mailto:' + page.site.contactEmail" class="underline underline-offset-4 hover:text-white">Contact us</a></div>
             </div>
             <div class="relative mx-auto w-full max-w-lg">
