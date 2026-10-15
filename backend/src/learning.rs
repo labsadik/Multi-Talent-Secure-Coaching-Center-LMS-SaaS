@@ -46,7 +46,7 @@ pub struct CreateLessonRequest {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ContentResponse {
+pub struct ContentResponse {
     id: String,
     title: String,
     slug: String,
