@@ -54,20 +54,6 @@ export function assertSameOrigin(event: H3Event) {
 export function publicSession(session: AuthResponse) {
   return { user: session.user, company: session.company, expiresIn: session.expiresIn }
 }
-export async function startSlackSession(event: H3Event, companySlug: string, code: string, nonce: string) {
-  try {
-    const session = await $fetch<AuthResponse>('/api/v1/auth/slack-login', {
-      baseURL: apiBase(event),
-      method: 'POST',
-      body: { companySlug, code, nonce },
-    })
-    setSessionCookies(event, session)
-    return publicSession(session)
-  } catch (error) {
-    throw passThroughError(error, apiBase(event))
-  }
-}
-
 export async function startSession(event: H3Event, action: 'login' | 'register' | 'register-learner', body: unknown) {
   assertSameOrigin(event)
   try {
