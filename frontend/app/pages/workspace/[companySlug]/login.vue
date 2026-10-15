@@ -22,13 +22,15 @@ const registerPath = computed(() => ({
 }))
 
 function loginResponsePath() {
+  const base = '/workspace/' + encodeURIComponent(companySlug.value) + '/dashboard'
   if (currentUser.value?.role === 'learner') {
     return courseId.value
-      ? { path: '/dashboard/learn', query: { checkoutCourse: courseId.value } }
-      : '/dashboard/learn'
+      ? { path: base + '/learn', query: { checkoutCourse: courseId.value } }
+      : base + '/learn'
   }
-  const requested = typeof route.query.redirect === 'string' ? route.query.redirect : '/dashboard'
-  return requested.startsWith('/') && !requested.startsWith('//') ? requested : '/dashboard'
+  const requested = typeof route.query.redirect === 'string' ? route.query.redirect : ''
+  if (requested.startsWith(base) && !requested.startsWith('//')) return requested
+  return base
 }
 
 async function switchWorkspace() {
