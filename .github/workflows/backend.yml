@@ -18,8 +18,32 @@ permissions:
 
 jobs:
   check:
-    name: Format, lint, test, build
+    name: Format, lint, unit test, build, HTTP smoke test
     runs-on: ubuntu-latest
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand(\"ping\").ok'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      APP_ENV: test
+      HOST: 127.0.0.1
+      PORT: 8080
+      MONGODB_URI: mongodb://127.0.0.1:27017/?directConnection=true
+      MONGODB_DATABASE: newage_ci_${{ github.run_id }}_${{ github.run_attempt }}
+      MONGODB_MAX_POOL_SIZE: "10"
+      JWT_SECRET: ci-test-secret-not-for-production-000000000000
+      JWT_ISSUER: https://api.newage.test
+      JWT_AUDIENCE: newage-ci
+      CORS_ALLOWED_ORIGINS: http://localhost:3000
+      MAX_REQUEST_BODY_BYTES: "26214400"
+      MAX_ASSET_UPLOAD_BYTES: "20971520"
+      RUST_LOG: info
     defaults:
       run:
         working-directory: backend
@@ -34,11 +58,39 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: backend
-      - name: Format Rust sources before validation
-        run: cargo fmt --all
-      - name: Run tests
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+      - name: Run unit tests
         run: cargo test --all-targets
       - name: Run Clippy
         run: cargo clippy --all-targets
       - name: Compile release binary
         run: cargo build --release
+      - name: Validate HTTP smoke test script
+        run: bash -n scripts/smoke-test.sh
+      - name: Start API against CI MongoDB
+        run: |
+          ./target/release/newage-api > /tmp/newage-api.log 2>&1 &
+          echo $! > /tmp/newage-api.pid
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:8080/health/ready > /tmp/newage-ready.json; then
+              cat /tmp/newage-ready.json
+              exit 0
+            fi
+            if ! kill -0 "$(cat /tmp/newage-api.pid)" 2>/dev/null; then
+              cat /tmp/newage-api.log
+              exit 1
+            fi
+            sleep 1
+          done
+          cat /tmp/newage-api.log
+          echo "API did not become ready in time" >&2
+          exit 1
+      - name: Run authenticated API and tenant-isolation smoke tests
+        run: scripts/smoke-test.sh
+      - name: Stop API
+        if: always()
+        run: |
+          if [[ -f /tmp/newage-api.pid ]]; then
+            kill "$(cat /tmp/newage-api.pid)" 2>/dev/null || true
+          fi
