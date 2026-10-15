@@ -466,6 +466,157 @@ pub async fn login(
     }))
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SlackLoginRequest {
+    pub company_slug: String,
+    pub code: String,
+}
+
+pub async fn slack_login(
+    State(state): State<AppState>,
+    Json(input): Json<SlackLoginRequest>,
+) -> AppResult<Json<AuthResponse>> {
+    let company_slug = input.company_slug.trim().to_ascii_lowercase();
+    let code = input.code.trim();
+    if !valid_slug(&company_slug) || code.is_empty() || code.len() > 4096 {
+        return Err(AppError::Unauthorized);
+    }
+
+    let expected_team = state
+        .settings
+        .slack_company_workspaces
+        .get(&company_slug)
+        .ok_or(AppError::ServiceUnavailable("Slack sign-in is not configured for this workspace"))?;
+    let client_id = state
+        .settings
+        .slack_client_id
+        .as_deref()
+        .ok_or(AppError::ServiceUnavailable("Slack sign-in is not configured"))?;
+    let client_secret = state
+        .settings
+        .slack_client_secret
+        .as_deref()
+        .ok_or(AppError::ServiceUnavailable("Slack sign-in is not configured"))?;
+    let redirect_uri = state
+        .settings
+        .slack_redirect_uri
+        .as_deref()
+        .ok_or(AppError::ServiceUnavailable("Slack sign-in is not configured"))?;
+
+    // Exchange the one-time authorization code on the server only; never expose the
+    // Slack client secret or Slack access token to browser JavaScript.
+    let token_response: serde_json::Value = state
+        .http
+        .post("https://slack.com/api/openid.connect.token")
+        .form(&[
+            ("client_id", client_id),
+            ("client_secret", client_secret),
+            ("code", code),
+            ("redirect_uri", redirect_uri),
+            ("grant_type", "authorization_code"),
+        ])
+        .send()
+        .await?
+        .json()
+        .await?;
+    if token_response.get("ok").and_then(serde_json::Value::as_bool) != Some(true) {
+        return Err(AppError::Unauthorized);
+    }
+    let access_token = token_response
+        .get("access_token")
+        .and_then(serde_json::Value::as_str)
+        .filter(|token| !token.is_empty())
+        .ok_or(AppError::Unauthorized)?;
+
+    // Fetch verified identity from Slack rather than trusting identity data supplied
+    // by the browser or decoding an unverified token locally.
+    let identity: serde_json::Value = state
+        .http
+        .post("https://slack.com/api/openid.connect.userInfo")
+        .bearer_auth(access_token)
+        .send()
+        .await?
+        .json()
+        .await?;
+    if identity.get("ok").and_then(serde_json::Value::as_bool) != Some(true) {
+        return Err(AppError::Unauthorized);
+    }
+    let email = identity
+        .get("email")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .map(str::to_ascii_lowercase)
+        .filter(|email| valid_email(email))
+        .ok_or(AppError::Unauthorized)?;
+    let email_verified = identity
+        .get("email_verified")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    let slack_team_id = identity
+        .get("https://slack.com/team_id")
+        .and_then(serde_json::Value::as_str)
+        .ok_or(AppError::Unauthorized)?;
+    if !email_verified || slack_team_id != expected_team {
+        return Err(AppError::Unauthorized);
+    }
+
+    // Resolve the company and member independently. A Slack identity can only sign
+    // into the company whose slug is requested and whose mapped Slack team matches.
+    let company = state
+        .db
+        .collection::<mongodb::bson::Document>("companies")
+        .find_one(doc! { "slug": &company_slug, "status": "active" })
+        .await?
+        .ok_or(AppError::Unauthorized)?;
+    let company_id = company
+        .get_object_id("_id")
+        .map_err(|_| AppError::Internal)?
+        .to_owned();
+    let user = state
+        .db
+        .collection::<mongodb::bson::Document>("users")
+        .find_one(doc! {
+            "companyId": company_id.clone(),
+            "email": &email,
+            "status": "active",
+        })
+        .await?
+        .ok_or(AppError::Unauthorized)?;
+    let user_id = user
+        .get_object_id("_id")
+        .map_err(|_| AppError::Internal)?
+        .to_owned();
+    let role = user
+        .get_str("role")
+        .map_err(|_| AppError::Internal)?
+        .to_owned();
+    if !matches!(role.as_str(), "owner" | "admin" | "instructor" | "learner") {
+        return Err(AppError::Unauthorized);
+    }
+
+    let token = issue_access_token(&state, &user_id, &company_id, &role)?;
+    let refresh_token = create_refresh_session(&state, &user_id, &company_id).await?;
+    Ok(Json(AuthResponse {
+        access_token: token,
+        refresh_token,
+        token_type: "Bearer",
+        expires_in: state.settings.jwt_ttl_seconds,
+        refresh_expires_in: REFRESH_TTL_SECONDS,
+        user: PublicUser {
+            id: user_id.to_hex(),
+            name: user.get_str("name").unwrap_or_default().to_owned(),
+            email,
+            role,
+        },
+        company: PublicCompany {
+            id: company_id.to_hex(),
+            name: company.get_str("name").unwrap_or_default().to_owned(),
+            slug: company_slug,
+        },
+    }))
+}
+
 pub async fn refresh(
     State(state): State<AppState>,
     Json(input): Json<RefreshRequest>,
