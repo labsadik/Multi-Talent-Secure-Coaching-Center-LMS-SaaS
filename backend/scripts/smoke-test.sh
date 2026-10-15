@@ -96,6 +96,12 @@ token_a="$(jq -er '.accessToken | select(type == "string" and length > 0)' "$TMP
 refresh_a="$(jq -er '.refreshToken | select(type == "string" and length >= 40)' "$TMP_DIR/login-a.json")"
 assert_json "$TMP_DIR/login-a.json" '.user.role == "owner" and .refreshExpiresIn >= 86400' "company A login response is invalid"
 
+# Company learner payments use the company's Razorpay account; platform plan checkout is removed.
+http 404 "$BASE_URL/api/v1/company/subscription/orders" -X POST -H "Authorization: Bearer $token_a" -H 'Content-Type: application/json' --data '{}'
+assert_json "$TMP_DIR/body" '.error.code == "not_found"' "platform subscription order endpoint is still exposed"
+http 404 "$BASE_URL/api/v1/webhooks/platform-razorpay" -X POST -H 'Content-Type: application/json' --data '{}'
+assert_json "$TMP_DIR/body" '.error.code == "not_found"' "platform Razorpay webhook endpoint is still exposed"
+
 # Refresh renews the access token while retaining the same opaque session credential.
 payload="$(jq -n --arg refreshToken "$refresh_a" '{refreshToken:$refreshToken}')"
 http 200 "$BASE_URL/api/v1/auth/refresh" -H 'Content-Type: application/json' --data "$payload"
@@ -167,6 +173,10 @@ http 201 "$BASE_URL/api/v1/courses" -H "Authorization: Bearer $token_a" -H 'Cont
 cp "$TMP_DIR/body" "$TMP_DIR/course.json"
 course_id="$(jq -er '.id | select(type == "string" and length > 0)' "$TMP_DIR/course.json")"
 assert_json "$TMP_DIR/course.json" '.status == "draft" and .title == "Tenant Isolation Smoke Course"' "course creation response is invalid"
+
+payload="$(jq -n --arg slug "smoke-course-extra-$suffix" '{title:"Second Company Course",slug:$slug,description:"Plan-free course catalog test",priceInPaise:19900}')"
+http 201 "$BASE_URL/api/v1/courses" -H "Authorization: Bearer $token_a" -H 'Content-Type: application/json' --data "$payload"
+assert_json "$TMP_DIR/body" '.title == "Second Company Course" and .priceInPaise == 19900' "company could not create a second course without a platform plan"
 
 # A user in company B must not publish company A's course, even when its ID is known.
 http 404 "$BASE_URL/api/v1/courses/$course_id/publish" -X POST -H "Authorization: Bearer $token_b"
@@ -295,4 +305,4 @@ payload="$(jq -n --arg refreshToken "$refresh_a" '{refreshToken:$refreshToken}')
 http 204 "$BASE_URL/api/v1/auth/logout" -H 'Content-Type: application/json' --data "$payload"
 http 401 "$BASE_URL/api/v1/auth/refresh" -H 'Content-Type: application/json' --data "$payload"
 
-printf 'PASS: health, readiness, auth/session, learner/instructor/admin RBAC, course lifecycle, company settings, and tenant isolation.\n'
+printf 'PASS: health, readiness, auth/session, learner/instructor/admin RBAC, course payments, no-plan course creation, and tenant isolation.\n'

@@ -1,9 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    config::Settings,
-    error::{AppError, AppResult},
-};
+use crate::error::{AppError, AppResult};
 
 #[derive(Clone)]
 pub struct RazorpayClient {
@@ -39,21 +36,7 @@ pub struct RazorpayOrder {
 }
 
 impl RazorpayClient {
-    pub fn from_settings(settings: &Settings, client: reqwest::Client) -> AppResult<Self> {
-        Ok(Self {
-            client,
-            key_id: settings
-                .razorpay_key_id
-                .clone()
-                .ok_or(AppError::ServiceUnavailable("Razorpay"))?,
-            key_secret: settings
-                .razorpay_key_secret
-                .clone()
-                .ok_or(AppError::ServiceUnavailable("Razorpay"))?,
-        })
-    }
-
-    /// Creates a platform-side INR order. Derive amount from a server-side plan/course record.
+    /// Creates an INR order from the owning company's encrypted Razorpay credentials.
     pub fn from_credentials(
         client: reqwest::Client,
         key_id: String,

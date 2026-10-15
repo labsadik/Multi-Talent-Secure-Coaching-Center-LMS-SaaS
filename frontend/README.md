@@ -37,7 +37,7 @@ The server-side API origin is NUXT_API_INTERNAL_BASE in frontend/.env. It is int
 - /dashboard/learn — learner enrolments, course discovery, Razorpay checkout, and progress (public paid-course links continue to checkout after sign-up)
 - /dashboard/learn — learner enrolments, course discovery, checkout, and progress
 - /dashboard/users — company member listing, invitations, roles, and disable/reactivate controls
-- /dashboard/settings — company Razorpay integration settings and SaaS plan checkout
+- /dashboard/settings — company-specific Razorpay credentials for selling published courses
 
 ## Commands
 
@@ -64,7 +64,7 @@ The company dashboard now exposes the public storefront and theme editor at /das
 
 Paid course enrolment CTAs use the company's Razorpay configuration and backend order/payment-verification endpoints. New learners arrive with the company's slug prefilled and continue to their selected course after registration. Provider features require working Bunny/Razorpay credentials, webhook setup, and sandbox round-trip verification before production use.
 
-The subscription checkout UI relies on the authenticated Razorpay webhook as the activation source of truth. A checkout success screen by itself never grants a plan or course access.
+Paid course checkout uses each company's own Razorpay account. The backend derives the order amount from the company's published course and grants course access only after the company's payment signature and captured payment are verified. Newage SaaS plan checkout is not part of the workspace or learner experience.
 
 
 ## Company-specific login and media

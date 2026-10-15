@@ -11,7 +11,7 @@ use crate::{
     auth::{hash_password, valid_email, AuthUser},
     error::{AppError, AppResult},
     state::AppState,
-    tenant::{ensure_learner_capacity, require_active_company},
+    tenant::require_active_company,
 };
 
 #[derive(Debug, Deserialize)]
@@ -144,10 +144,7 @@ pub async fn create_company_user(
     if auth.role == "instructor" && role != "learner" {
         return Err(AppError::Forbidden);
     }
-    let company = require_active_company(&state.db, &auth.company_id).await?;
-    if role == "learner" {
-        ensure_learner_capacity(&state, &company, &auth.company_id).await?;
-    }
+    require_active_company(&state.db, &auth.company_id).await?;
 
     let user_id = ObjectId::new();
     let now = DateTime::now();
@@ -183,7 +180,7 @@ pub async fn update_company_user(
     Json(input): Json<UpdateCompanyUserRequest>,
 ) -> AppResult<Json<CompanyUserResponse>> {
     require_user_manager(&auth)?;
-    let company = require_active_company(&state.db, &auth.company_id).await?;
+    require_active_company(&state.db, &auth.company_id).await?;
 
     let user_id =
         ObjectId::parse_str(&user_id).map_err(|_| AppError::BadRequest("invalid user ID"))?;
@@ -200,7 +197,6 @@ pub async fn update_company_user(
         .await?
         .ok_or(AppError::NotFound)?;
     let target_role = target.get_str("role").unwrap_or_default();
-    let target_status = target.get_str("status").unwrap_or("active");
     if target_role == "owner" {
         return Err(AppError::Forbidden);
     }
@@ -209,17 +205,6 @@ pub async fn update_company_user(
     if auth.role == "instructor" && (target_role != "learner" || input.role.is_some()) {
         return Err(AppError::Forbidden);
     }
-
-    let next_role = input
-        .role
-        .as_ref()
-        .map(|role| role.trim().to_ascii_lowercase())
-        .unwrap_or_else(|| target_role.to_owned());
-    let next_status = input
-        .status
-        .as_ref()
-        .map(|status| status.trim().to_ascii_lowercase())
-        .unwrap_or_else(|| target_status.to_owned());
 
     if let Some(role) = &input.role {
         if !matches!(role.trim().to_ascii_lowercase().as_str(), "admin" | "instructor" | "learner") {
@@ -230,14 +215,6 @@ pub async fn update_company_user(
         if !matches!(status.trim().to_ascii_lowercase().as_str(), "active" | "disabled") {
             return Err(AppError::BadRequest("status must be active or disabled"));
         }
-    }
-
-    // A promotion or reactivation is subject to the same active-learner cap as registration.
-    if next_role == "learner"
-        && next_status == "active"
-        && !(target_role == "learner" && target_status == "active")
-    {
-        ensure_learner_capacity(&state, &company, &auth.company_id).await?;
     }
 
     let mut set_fields = doc! { "updatedAt": DateTime::now() };

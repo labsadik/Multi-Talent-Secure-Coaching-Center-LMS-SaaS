@@ -6,17 +6,17 @@ This is the Rust backend foundation for the multi-tenant Newage LMS SaaS. The Nu
 
 - Axum/Tokio HTTP server with graceful shutdown, structured JSON logs, security headers, exact-origin CORS, rate limits, and request body limits.
 - Centralized configuration from process environment variables and a local `.env` via dotenvy. Process environment variables take precedence.
-- MongoDB connection pooling and unique indexes for company slugs, company-scoped users/course slugs, learning content, enrollments, payments, and subscriptions.
+- MongoDB connection pooling and unique indexes for company slugs, company-scoped users/course slugs, learning content, enrollments, and course payments.
 - Company-owner and learner registration, Argon2 password hashing, tenant-scoped login, short-lived JWT access tokens with issuer/audience validation, and database revalidation of the user's active status and current role on authenticated requests.
 - Opaque refresh sessions with SHA-256 hash-only storage, 30-day sliding inactivity expiry, TTL cleanup, explicit logout revocation, and HttpOnly-cookie handling through the Nuxt BFF.
 - Opaque, 256-bit refresh-session credentials with SHA-256 hash-only storage, 30-day sliding inactivity expiry, TTL cleanup, explicit logout revocation, and server-side HttpOnly-cookie handling in the Nuxt BFF.
 - Tenant-aware course create/list/publish, subject/topic/lesson creation and discovery, preview-only lesson listings for non-enrolled learners, and learner progress/completion summaries.
-- Tenant owner/admin company-user listing, creation, role updates, disable/enable workflows, and active learner quota checks.
+- Tenant owner/admin company-user listing, creation, role updates, and disable/enable workflows.
 - Bunny Storage topic-scoped file uploads with MIME/signature/size validation and authenticated downloads; Bunny Stream per-course collections, short-lived TUS upload tickets, encoding-status synchronization, and signed playback access.
-- Tenant Razorpay credentials encrypted with AES-256-GCM, server-calculated course order amounts, signature-verified payment confirmation/webhooks, idempotent enrollment/payment writes, plus separate platform SaaS subscription billing and webhook processing.
+- Per-company Razorpay credentials encrypted with AES-256-GCM, server-calculated course order amounts, company-secret-verified payment webhooks, and idempotent enrollment/payment writes. Each company sells published courses through its own Razorpay account; there is no platform plan checkout.
 - CI for formatting, unit tests, Clippy, release compilation, and HTTP smoke tests against a temporary MongoDB service. Smoke tests cover health/readiness, security headers, auth guards, registration/login, role enforcement, course lifecycle, and cross-tenant isolation.
 
-This is a substantial backend foundation, not yet a complete production LMS. Before a public production launch, remaining work includes email verification/password reset and transactional email, fuller content edit/delete workflows, shared/distributed rate limiting for multi-instance deployments, audit logs and operational alerting, atomic quota enforcement under concurrent writes, and end-to-end verification against real Bunny/Razorpay sandbox accounts. Production TLS, secrets, backups, deployment monitoring, and a documented secret-rotation procedure must also be configured. Do not treat a green CI run as a substitute for provider sandbox tests or production security review.
+This is a substantial backend foundation, not yet a complete production LMS. Before a public production launch, remaining work includes email verification/password reset and transactional email, fuller content edit/delete workflows, shared/distributed rate limiting for multi-instance deployments, audit logs and operational alerting, and end-to-end verification against real Bunny/Razorpay sandbox accounts. Production TLS, secrets, backups, deployment monitoring, and a documented secret-rotation procedure must also be configured. Do not treat a green CI run as a substitute for provider sandbox tests or production security review.
 
 ## Local setup
 
@@ -47,12 +47,12 @@ Optional upload/playback settings include `MAX_ASSET_UPLOAD_BYTES`, `BUNNY_TUS_E
 
 A company's Razorpay key ID, API secret, and webhook secret are submitted through its authenticated settings endpoint. Only encrypted API/webhook secrets are stored in MongoDB; `APP_ENCRYPTION_KEY_BASE64` is required in production and must be managed as a durable secret with a rotation/backup plan.
 
-Per-plan course/learner caps are read from `PLAN_*_MAX_COURSES` and `PLAN_*_MAX_LEARNERS`; paid plans downgrade to free when the stored subscription expires. Platform billing reads `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`, and `PLAN_*_MONTHLY_PRICE_PAISE` from `.env`. Platform credentials are separate from each company's encrypted course-payment credentials.
+Razorpay settings are configured separately by each company in **Dashboard → Course payments**. The company Key ID, API secret, and webhook secret are stored encrypted, and order creation, payment verification, and webhook enrollment are scoped to that company's courses. No global/platform Razorpay keys or subscription plan price variables are required.
 
 Optional provider configuration must be supplied in matching pairs:
 - Bunny Storage: `BUNNY_STORAGE_ZONE` + `BUNNY_STORAGE_API_KEY`
 - Bunny Stream: `BUNNY_STREAM_LIBRARY_ID` + `BUNNY_STREAM_API_KEY`
-- Platform Razorpay: `RAZORPAY_KEY_ID` + `RAZORPAY_KEY_SECRET`
+- Course payments: company-specific Razorpay credentials saved in workspace settings
 
 `APP_ENCRYPTION_KEY_BASE64` must decode to 32 bytes when set and is mandatory in production. Generate one with `openssl rand -base64 32`. Use a separate random JWT secret per environment. Never put secrets in frontend variables, client bundles, logs, repository files, or issue comments.
 
@@ -66,7 +66,7 @@ Optional provider configuration must be supplied in matching pairs:
 - `GET/POST /api/v1/company/users` and `PATCH /api/v1/company/users/{user_id}` — company user management.
 - `GET /api/v1/me/courses`, `PUT /api/v1/lessons/{lesson_id}/progress`, `GET /api/v1/courses/{course_id}/my-progress` — learner progress.
 - Media: `PUT /api/v1/topics/{topic_id}/assets`, `POST /api/v1/topics/{topic_id}/video-upload-ticket`, `GET /api/v1/assets/{asset_id}/download`, `GET /api/v1/lessons/{lesson_id}/playback`.
-- Payments: `POST /api/v1/courses/{course_id}/orders`, `POST /api/v1/payments/verify`, `POST /api/v1/webhooks/razorpay`, `POST /api/v1/company/subscription/orders`, `POST /api/v1/webhooks/platform-razorpay`.
+- Payments: `POST /api/v1/courses/{course_id}/orders`, `POST /api/v1/payments/verify`, `POST /api/v1/webhooks/razorpay` — company-specific course orders, verification, and captured-payment webhook.
 
 Registration JSON fields: `companyName`, `companySlug`, `name`, `email`, `password`. Passwords must be 12–128 characters. Course creation requires an `Authorization: Bearer <access-token>` header and accepts `title`, `slug`, `description`, and `priceInPaise`. Price is stored in integer paise (for example, `49900` means INR 499.00).
 
@@ -77,7 +77,7 @@ Registration JSON fields: `companyName`, `companySlug`, `name`, `email`, `passwo
 - Provider API keys remain server-side. Do not return Bunny AccessKey or Razorpay secrets to browsers.
 - Configure TLS at a trusted reverse proxy/load balancer. The current rate limiter is in-memory and per process; deploy a shared rate-limit store or edge gateway before horizontally scaling or public production launch.
 - Course payment amounts must come from server-side database records. Success depends on verified payment signatures/webhooks and idempotent server-side state transitions, never frontend redirects alone.
-- Quota checks currently use count-then-write patterns. Add transaction/atomic enforcement before relying on caps as a hard commercial entitlement under concurrent requests.
+- Course payment amounts come from the tenant's stored course record; never accept a client-supplied payment amount. Access depends on verified payment state, not on the browser checkout callback alone.
 
 
 ## Refresh sessions and frontend integration

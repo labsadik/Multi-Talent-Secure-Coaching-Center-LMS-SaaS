@@ -9,7 +9,6 @@ mod health;
 mod integrations;
 mod media;
 mod payments;
-mod platform_billing;
 mod progress;
 mod learning;
 mod routes;
