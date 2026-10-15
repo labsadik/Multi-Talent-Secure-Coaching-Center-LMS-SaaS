@@ -1,0 +1,40 @@
+name: Local development bootstrap checks
+
+on:
+  push:
+    branches:
+      - main
+      - "backend/**"
+      - "fix/**"
+    paths:
+      - "scripts/dev.ps1"
+      - "compose.dev.yml"
+      - ".github/workflows/dev-bootstrap.yml"
+  pull_request:
+    paths:
+      - "scripts/dev.ps1"
+      - "compose.dev.yml"
+      - ".github/workflows/dev-bootstrap.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  powershell-parse:
+    name: Validate PowerShell bootstrap syntax
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Parse development script
+        shell: powershell
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          $scriptPath = (Resolve-Path "scripts/dev.ps1").Path
+          [System.Management.Automation.Language.Parser]::ParseFile($scriptPath, [ref]$tokens, [ref]$parseErrors) | Out-Null
+          if ($parseErrors.Count -gt 0) {
+            $parseErrors | ForEach-Object { Write-Error $_.Message }
+            exit 1
+          }
+          Write-Host "PowerShell syntax is valid."
