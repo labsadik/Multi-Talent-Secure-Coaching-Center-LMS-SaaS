@@ -74,6 +74,9 @@ export function useAuth() {
   async function deleteSubject(subjectId: string) {
     return backend<void>('subjects/' + encodeURIComponent(subjectId), { method: 'DELETE' })
   }
+  async function permanentlyDeleteSubject(subjectId: string) {
+    return backend<void>('subjects/' + encodeURIComponent(subjectId) + '/permanent', { method: 'DELETE' })
+  }
   async function getTopics(subjectId: string) { return backend<ContentItem[]>('subjects/' + encodeURIComponent(subjectId) + '/topics') }
   async function createTopic(subjectId: string, input: { title: string; slug: string; description?: string; sortOrder?: number }) {
     return backend<ContentItem>('subjects/' + encodeURIComponent(subjectId) + '/topics', { method: 'POST', body: input })
@@ -83,6 +86,9 @@ export function useAuth() {
   }
   async function deleteTopic(topicId: string) {
     return backend<void>('topics/' + encodeURIComponent(topicId), { method: 'DELETE' })
+  }
+  async function permanentlyDeleteTopic(topicId: string) {
+    return backend<void>('topics/' + encodeURIComponent(topicId) + '/permanent', { method: 'DELETE' })
   }
   async function getChapters(topicId: string) { return backend<ContentItem[]>('topics/' + encodeURIComponent(topicId) + '/chapters') }
   async function createChapter(topicId: string, input: { title: string; slug: string; description?: string; sortOrder?: number }) {
@@ -128,6 +134,9 @@ export function useAuth() {
   async function deleteLesson(lessonId: string) {
     return backend<void>('lessons/' + encodeURIComponent(lessonId), { method: 'DELETE' })
   }
+  async function permanentlyDeleteLesson(lessonId: string) {
+    return backend<void>('lessons/' + encodeURIComponent(lessonId) + '/permanent', { method: 'DELETE' })
+  }
   async function getCompanyUsers() { return backend<CompanyUser[]>('company/users') }
   async function createCompanyUser(input: { name: string; email: string; password: string; role: string }) {
     return backend<CompanyUser>('company/users', { method: 'POST', body: input })
@@ -151,8 +160,9 @@ export function useAuth() {
     file: File,
     context?: { chapterId: string; chapterPartId: string },
     onProgress?: (percent: number) => void,
+    displayName?: string,
   ) {
-    const params = new URLSearchParams({ filename: file.name })
+    const params = new URLSearchParams({ filename: displayName?.trim() || file.name })
     if (context) {
       params.set('chapterId', context.chapterId)
       params.set('chapterPartId', context.chapterPartId)
@@ -193,6 +203,12 @@ export function useAuth() {
       body: { title, ...(context || {}) },
     })
   }
+  async function archiveAsset(assetId: string) {
+    return backend<void>('assets/' + encodeURIComponent(assetId) + '/archive', { method: 'POST' })
+  }
+  async function permanentlyDeleteAsset(assetId: string) {
+    return backend<void>('assets/' + encodeURIComponent(assetId) + '/permanent', { method: 'DELETE' })
+  }
   async function refreshAssetStatus(assetId: string) {
     return backend<Record<string, unknown>>('assets/' + encodeURIComponent(assetId) + '/refresh-status', { method: 'POST' })
   }
@@ -221,14 +237,14 @@ export function useAuth() {
     currentUser, currentCompany, login, register, registerLearner, loadCurrentUser,
     getCompanySite, updateCompanySite,
     getCourses, createCourse, updateCourse, deleteCourse, publishCourse,
-    getSubjects, createSubject, updateSubject, deleteSubject,
-    getTopics, createTopic, updateTopic, deleteTopic,
-    getLessons, createLesson, updateLesson, deleteLesson,
+    getSubjects, createSubject, updateSubject, deleteSubject, permanentlyDeleteSubject,
+    getTopics, createTopic, updateTopic, deleteTopic, permanentlyDeleteTopic,
+    getLessons, createLesson, updateLesson, deleteLesson, permanentlyDeleteLesson,
     getChapters, createChapter, updateChapter, deleteChapter,
     getChapterParts, createChapterPart, updateChapterPart, deleteChapterPart,
     getChapterPartLessons, createChapterPartLesson, getTopicAssets,
     getCompanyUsers, createCompanyUser, updateCompanyUser, getMyCourses, updateLessonProgress, getCourseProgress, getPlayback,
-    uploadAsset, createVideoTicket, refreshAssetStatus, getRazorpaySettings, configureRazorpay, createCourseOrder,
+    uploadAsset, createVideoTicket, archiveAsset, permanentlyDeleteAsset, refreshAssetStatus, getRazorpaySettings, configureRazorpay, createCourseOrder,
     verifyCoursePayment, createSubscriptionOrder, logout, clearSession,
   }
 }
