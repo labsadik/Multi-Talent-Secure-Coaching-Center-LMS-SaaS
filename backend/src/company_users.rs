@@ -75,8 +75,16 @@ fn user_response(document: Document) -> AppResult<CompanyUserResponse> {
     })
 }
 
-fn require_admin(auth: &AuthUser) -> AppResult<()> {
-    if matches!(auth.role.as_str(), "owner" | "admin") {
+fn can_manage_users(role: &str) -> bool {
+    matches!(role, "owner" | "admin" | "instructor")
+}
+
+fn can_manage_all_users(role: &str) -> bool {
+    matches!(role, "owner" | "admin")
+}
+
+fn require_user_manager(auth: &AuthUser) -> AppResult<()> {
+    if can_manage_users(&auth.role) {
         Ok(())
     } else {
         Err(AppError::Forbidden)
@@ -87,13 +95,18 @@ pub async fn list_company_users(
     State(state): State<AppState>,
     auth: AuthUser,
 ) -> AppResult<Json<Vec<CompanyUserResponse>>> {
-    require_admin(&auth)?;
+    require_user_manager(&auth)?;
     require_active_company(&state.db, &auth.company_id).await?;
 
+    let filter = if auth.role == "instructor" {
+        doc! { "companyId": auth.company_id.clone(), "role": "learner" }
+    } else {
+        doc! { "companyId": auth.company_id.clone() }
+    };
     let cursor = state
         .db
         .collection::<Document>("users")
-        .find(doc! { "companyId": auth.company_id.clone() })
+        .find(filter)
         .sort(doc! { "createdAt": -1 })
         .limit(500)
         .await?;
@@ -111,7 +124,7 @@ pub async fn create_company_user(
     auth: AuthUser,
     Json(input): Json<CreateCompanyUserRequest>,
 ) -> AppResult<(StatusCode, Json<CompanyUserResponse>)> {
-    require_admin(&auth)?;
+    require_user_manager(&auth)?;
     require_active_company(&state.db, &auth.company_id).await?;
 
     let name = input.name.trim().to_owned();
@@ -127,7 +140,8 @@ pub async fn create_company_user(
             "name, email, password, or role does not meet validation rules",
         ));
     }
-    if role == "admin" && auth.role != "owner" {
+    // Instructors can create and manage learner accounts, but cannot grant staff access.
+    if auth.role == "instructor" && role != "learner" {
         return Err(AppError::Forbidden);
     }
     let company = require_active_company(&state.db, &auth.company_id).await?;
@@ -168,7 +182,7 @@ pub async fn update_company_user(
     auth: AuthUser,
     Json(input): Json<UpdateCompanyUserRequest>,
 ) -> AppResult<Json<CompanyUserResponse>> {
-    require_admin(&auth)?;
+    require_user_manager(&auth)?;
     let company = require_active_company(&state.db, &auth.company_id).await?;
 
     let user_id =
@@ -187,7 +201,12 @@ pub async fn update_company_user(
         .ok_or(AppError::NotFound)?;
     let target_role = target.get_str("role").unwrap_or_default();
     let target_status = target.get_str("status").unwrap_or("active");
-    if target_role == "owner" || (target_role == "admin" && auth.role != "owner") {
+    if target_role == "owner" {
+        return Err(AppError::Forbidden);
+    }
+    // Instructors may only update learner access status; role changes and staff accounts
+    // remain under owner/admin control.
+    if auth.role == "instructor" && (target_role != "learner" || input.role.is_some()) {
         return Err(AppError::Forbidden);
     }
 
@@ -205,9 +224,6 @@ pub async fn update_company_user(
     if let Some(role) = &input.role {
         if !matches!(role.trim().to_ascii_lowercase().as_str(), "admin" | "instructor" | "learner") {
             return Err(AppError::BadRequest("role must be admin, instructor, or learner"));
-        }
-        if role.trim().eq_ignore_ascii_case("admin") && auth.role != "owner" {
-            return Err(AppError::Forbidden);
         }
     }
     if let Some(status) = &input.status {
@@ -256,4 +272,25 @@ pub async fn update_company_user(
         .ok_or(AppError::NotFound)?;
 
     Ok(Json(user_response(updated)?))
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::{can_manage_all_users, can_manage_users};
+
+    #[test]
+    fn instructors_can_manage_learners_but_not_staff_roles() {
+        assert!(can_manage_users("instructor"));
+        assert!(!can_manage_all_users("instructor"));
+        assert!(!can_manage_users("learner"));
+    }
+
+    #[test]
+    fn owners_and_admins_can_manage_all_company_users() {
+        for role in ["owner", "admin"] {
+            assert!(can_manage_users(role));
+            assert!(can_manage_all_users(role));
+        }
+    }
 }
