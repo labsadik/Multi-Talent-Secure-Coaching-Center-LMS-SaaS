@@ -248,7 +248,7 @@ onMounted(() => {
         </article>
       </section>
 
-      <section v-if="canManageContent" class="mt-7 grid gap-4 md:grid-cols-2">
+      <section v-if="['owner', 'admin'].includes(currentUser?.role || '')" class="mt-7 grid gap-4 md:grid-cols-2">
         <NuxtLink :to="workspacePath('/site')" class="group flex items-center gap-4 rounded-2xl border border-line bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-lg"><span class="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-brand-soft text-xl text-brand">✦</span><span class="min-w-0 flex-1"><strong class="block text-sm font-semibold">Public company page & theme</strong><span class="mt-1 block text-xs leading-5 text-muted">Set your branding, colours, logo, banner and company story.</span></span><span class="text-lg text-muted transition group-hover:translate-x-1">→</span></NuxtLink>
         <NuxtLink v-if="currentCompany?.slug" :to="'/p/' + currentCompany.slug" target="_blank" class="group flex items-center gap-4 rounded-2xl border border-line bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-lg"><span class="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-emerald-100 text-xl text-emerald-700">↗</span><span class="min-w-0 flex-1"><strong class="block text-sm font-semibold">View public course catalogue</strong><span class="mt-1 block text-xs leading-5 text-muted">Open your company’s public learning page to share with learners.</span></span><span class="text-lg text-muted transition group-hover:translate-x-1">→</span></NuxtLink>
       </section>
