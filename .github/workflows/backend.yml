@@ -87,7 +87,7 @@ jobs:
           echo "API did not become ready in time" >&2
           exit 1
       - name: Run authenticated API and tenant-isolation smoke tests
-        run: scripts/smoke-test.sh
+        run: bash scripts/smoke-test.sh
       - name: Stop API
         if: always()
         run: |
