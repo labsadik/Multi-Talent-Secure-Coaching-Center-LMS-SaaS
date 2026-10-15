@@ -4,12 +4,17 @@ import { apiErrorMessage } from '~/utils/api-error'
 definePageMeta({ layout: 'auth', middleware: 'guest' })
 
 const { registerLearner } = useAuth()
+const route = useRoute()
 const companySlug = ref('')
 const name = ref('')
 const email = ref('')
 const password = ref('')
 const pending = ref(false)
 const errorMessage = ref('')
+
+onMounted(() => {
+  if (typeof route.query.companySlug === 'string') companySlug.value = route.query.companySlug
+})
 
 async function submit() {
   pending.value = true
@@ -21,7 +26,8 @@ async function submit() {
       email: email.value.trim(),
       password: password.value,
     })
-    await navigateTo('/dashboard/learn')
+    const courseId = typeof route.query.courseId === 'string' ? route.query.courseId : ''
+    await navigateTo(courseId ? { path: '/dashboard/learn', query: { checkoutCourse: courseId } } : '/dashboard/learn')
   } catch (error) {
     errorMessage.value = apiErrorMessage(error, 'Learner account could not be created. Check the workspace slug and details.')
   } finally { pending.value = false }
