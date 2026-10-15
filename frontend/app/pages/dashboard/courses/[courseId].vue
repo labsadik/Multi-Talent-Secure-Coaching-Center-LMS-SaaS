@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import type { ContentItem, Course, PlaybackInfo } from '~/types/api'
+import type { ContentItem, Course, PlaybackInfo, TopicAsset } from '~/types/api'
 import { apiErrorMessage } from '~/utils/api-error'
 
 definePageMeta({ middleware: 'auth' })
 
-type TopicOutline = ContentItem & { lessons: ContentItem[] }
+type ChapterPartOutline = ContentItem & { lessons: ContentItem[] }
+type ChapterOutline = ContentItem & { parts: ChapterPartOutline[] }
+type TopicOutline = ContentItem & { lessons: ContentItem[]; chapters: ChapterOutline[]; assets: TopicAsset[] }
 type SubjectOutline = ContentItem & { topics: TopicOutline[] }
 type VideoUploadTicket = {
   assetId: string
@@ -17,24 +19,36 @@ type VideoUploadTicket = {
     authorizationExpire: number
   }
 }
+type EditableKind = 'subject' | 'topic' | 'chapter' | 'chapterPart' | 'lesson'
 
 const route = useRoute()
 const courseId = computed(() => String(route.params.courseId || ''))
 const {
   currentUser,
   getCourses,
+  updateCourse,
   getSubjects,
   createSubject,
-  getTopics,
-  createTopic,
-  getLessons,
-  createLesson,
   updateSubject,
   deleteSubject,
+  getTopics,
+  createTopic,
   updateTopic,
   deleteTopic,
+  getChapters,
+  createChapter,
+  updateChapter,
+  deleteChapter,
+  getChapterParts,
+  createChapterPart,
+  updateChapterPart,
+  deleteChapterPart,
+  getChapterPartLessons,
+  createChapterPartLesson,
+  getLessons,
   updateLesson,
   deleteLesson,
+  getTopicAssets,
   uploadAsset,
   createVideoTicket,
   refreshAssetStatus,
@@ -50,6 +64,8 @@ const uploading = ref(false)
 const uploadProgress = ref(0)
 const selectedSubjectId = ref('')
 const selectedTopicId = ref('')
+const selectedChapterId = ref('')
+const selectedChapterPartId = ref('')
 const selectedAssetId = ref('')
 const selectedAssetTopicId = ref('')
 const pendingVideoAssetId = ref('')
@@ -59,16 +75,20 @@ const subjectTitle = ref('')
 const subjectSlug = ref('')
 const topicTitle = ref('')
 const topicSlug = ref('')
+const chapterTitle = ref('')
+const chapterSlug = ref('')
+const chapterPartTitle = ref('')
+const chapterPartSlug = ref('')
 const lessonTitle = ref('')
 const lessonSlug = ref('')
 const lessonType = ref<'text' | 'video' | 'file'>('text')
 const lessonContent = ref('')
+const lessonThumbnailUrl = ref('')
 const lessonPreview = ref(false)
 const lessonDuration = ref(0)
 const playback = ref<PlaybackInfo | null>(null)
 const playbackLesson = ref<ContentItem | null>(null)
 const busyLessonId = ref('')
-type EditableKind = 'subject' | 'topic' | 'lesson'
 const editTarget = ref<{ kind: EditableKind; item: ContentItem } | null>(null)
 const editTitle = ref('')
 const editSlug = ref('')
@@ -77,6 +97,7 @@ const editSortOrder = ref(0)
 const editLessonType = ref<'text' | 'video' | 'file'>('text')
 const editLessonContent = ref('')
 const editMediaAssetId = ref('')
+const editThumbnailUrl = ref('')
 const editDuration = ref(0)
 const editPreview = ref(false)
 
@@ -84,6 +105,8 @@ const canManageContent = computed(() => ['owner', 'admin', 'instructor'].include
 
 watch(subjectTitle, (value) => { if (!subjectSlug.value) subjectSlug.value = slugify(value) })
 watch(topicTitle, (value) => { if (!topicSlug.value) topicSlug.value = slugify(value) })
+watch(chapterTitle, (value) => { if (!chapterSlug.value) chapterSlug.value = slugify(value) })
+watch(chapterPartTitle, (value) => { if (!chapterPartSlug.value) chapterPartSlug.value = slugify(value) })
 watch(lessonTitle, (value) => { if (!lessonSlug.value) lessonSlug.value = slugify(value) })
 
 function slugify(value: string) {
@@ -98,6 +121,12 @@ function resetMessages() {
   errorMessage.value = ''
   successMessage.value = ''
 }
+function bytesLabel(bytes: number) {
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
 async function loadOutline() {
   loading.value = true
   errorMessage.value = ''
@@ -110,10 +139,28 @@ async function loadOutline() {
       const topics = await getTopics(subject.id)
       return {
         ...subject,
-        topics: await Promise.all(topics.map(async (topic) => ({
-          ...topic,
-          lessons: await getLessons(topic.id),
-        }))),
+        topics: await Promise.all(topics.map(async (topic) => {
+          const [topicLessons, chapters, assets] = await Promise.all([
+            getLessons(topic.id),
+            getChapters(topic.id),
+            canManageContent.value ? getTopicAssets(topic.id) : Promise.resolve([] as TopicAsset[]),
+          ])
+          return {
+            ...topic,
+            lessons: topicLessons.filter((lesson) => !lesson.chapterPartId),
+            assets,
+            chapters: await Promise.all(chapters.map(async (chapter) => {
+              const parts = await getChapterParts(chapter.id)
+              return {
+                ...chapter,
+                parts: await Promise.all(parts.map(async (part) => ({
+                  ...part,
+                  lessons: await getChapterPartLessons(part.id),
+                }))),
+              }
+            })),
+          }
+        })),
       }
     }))
     if (!outline.value.some((subject) => subject.id === selectedSubjectId.value)) {
@@ -122,6 +169,14 @@ async function loadOutline() {
     const allTopics = outline.value.flatMap((subject) => subject.topics)
     if (!allTopics.some((topic) => topic.id === selectedTopicId.value)) {
       selectedTopicId.value = allTopics[0]?.id ?? ''
+    }
+    const allChapters = allTopics.flatMap((topic) => topic.chapters)
+    if (!allChapters.some((chapter) => chapter.id === selectedChapterId.value)) {
+      selectedChapterId.value = allChapters[0]?.id ?? ''
+    }
+    const allChapterParts = allChapters.flatMap((chapter) => chapter.parts)
+    if (!allChapterParts.some((part) => part.id === selectedChapterPartId.value)) {
+      selectedChapterPartId.value = allChapterParts[0]?.id ?? ''
     }
   } catch (error) {
     errorMessage.value = apiErrorMessage(error, 'Course content could not be loaded.')
@@ -151,44 +206,132 @@ async function saveTopic(subjectId: string) {
     topicTitle.value = ''
     topicSlug.value = ''
     await loadOutline()
-    successMessage.value = 'Topic added.'
+    successMessage.value = 'Part added to subject.'
   } catch (error) {
-    errorMessage.value = apiErrorMessage(error, 'Topic could not be created.')
+    errorMessage.value = apiErrorMessage(error, 'Part could not be created.')
   } finally { saving.value = false }
 }
-async function saveLesson(topicId: string) {
+async function saveChapter(topicId: string) {
   resetMessages()
-  if (lessonType.value !== 'text' && selectedAssetTopicId.value !== topicId) {
-    errorMessage.value = 'Upload or select a ready media asset from the same topic as this lesson.'
+  saving.value = true
+  try {
+    const chapter = await createChapter(topicId, { title: chapterTitle.value.trim(), slug: chapterSlug.value.trim().toLowerCase() })
+    selectedChapterId.value = chapter.id
+    chapterTitle.value = ''
+    chapterSlug.value = ''
+    await loadOutline()
+    successMessage.value = 'Chapter added to this part.'
+  } catch (error) {
+    errorMessage.value = apiErrorMessage(error, 'Chapter could not be created.')
+  } finally { saving.value = false }
+}
+async function saveChapterPart(chapterId: string) {
+  resetMessages()
+  saving.value = true
+  try {
+    const part = await createChapterPart(chapterId, { title: chapterPartTitle.value.trim(), slug: chapterPartSlug.value.trim().toLowerCase() })
+    selectedChapterPartId.value = part.id
+    chapterPartTitle.value = ''
+    chapterPartSlug.value = ''
+    await loadOutline()
+    successMessage.value = 'Chapter part added.'
+  } catch (error) {
+    errorMessage.value = apiErrorMessage(error, 'Chapter part could not be created.')
+  } finally { saving.value = false }
+}
+function topicForChapterPart(partId: string) {
+  for (const subject of outline.value) {
+    for (const topic of subject.topics) {
+      for (const chapter of topic.chapters) {
+        if (chapter.parts.some((part) => part.id === partId)) return { topic, chapter }
+      }
+    }
+  }
+  return null
+}
+async function saveLesson(partId: string) {
+  resetMessages()
+  const context = topicForChapterPart(partId)
+  if (!context) {
+    errorMessage.value = 'Choose a chapter part before adding a lesson.'
+    return
+  }
+  if (lessonType.value !== 'text' && selectedAssetTopicId.value !== context.topic.id) {
+    errorMessage.value = 'Select a ready video, PDF or image from the same course part as this lesson.'
+    return
+  }
+  if (lessonType.value !== 'text' && !selectedAssetId.value) {
+    errorMessage.value = 'Choose an uploaded media asset before saving a video or file lesson.'
     return
   }
   saving.value = true
   try {
     const payload: {
       title: string; slug: string; lessonType: string; content?: string; mediaAssetId?: string
-      durationSeconds?: number; isPreview?: boolean
+      durationSeconds?: number; isPreview?: boolean; thumbnailUrl?: string
     } = {
       title: lessonTitle.value.trim(),
       slug: lessonSlug.value.trim().toLowerCase(),
       lessonType: lessonType.value,
       durationSeconds: Number(lessonDuration.value || 0),
       isPreview: lessonPreview.value,
+      thumbnailUrl: lessonThumbnailUrl.value.trim() || undefined,
     }
     if (lessonType.value === 'text') payload.content = lessonContent.value.trim()
     else payload.mediaAssetId = selectedAssetId.value
-    await createLesson(topicId, payload)
+    await createChapterPartLesson(partId, payload)
     lessonTitle.value = ''
     lessonSlug.value = ''
     lessonContent.value = ''
+    lessonThumbnailUrl.value = ''
     lessonDuration.value = 0
     lessonPreview.value = false
     selectedAssetId.value = ''
     selectedAssetTopicId.value = ''
     pendingVideoAssetId.value = ''
     await loadOutline()
-    successMessage.value = 'Lesson added.'
+    successMessage.value = 'Lesson added to chapter part.'
   } catch (error) {
     errorMessage.value = apiErrorMessage(error, 'Lesson could not be created. Video/file lessons need a ready media asset first.')
+  } finally { saving.value = false }
+}
+async function selectAsset(topicId: string, asset: TopicAsset) {
+  resetMessages()
+  selectedAssetId.value = asset.id
+  selectedAssetTopicId.value = topicId
+  if (asset.assetType === 'video' && asset.status !== 'ready') pendingVideoAssetId.value = asset.id
+  else pendingVideoAssetId.value = ''
+  successMessage.value = asset.title + ' selected for the next lesson.'
+}
+function useAssetAsLessonThumbnail(asset: TopicAsset) {
+  if (!asset.publicUrl) {
+    errorMessage.value = 'A public CDN URL is not configured for this asset. Add an HTTPS image URL or configure BUNNY_CDN_HOSTNAME.'
+    return
+  }
+  lessonThumbnailUrl.value = asset.publicUrl
+  successMessage.value = 'Image selected as the next lesson thumbnail.'
+  errorMessage.value = ''
+}
+async function useAssetAsCourseThumbnail(asset: TopicAsset) {
+  if (!asset.publicUrl) {
+    errorMessage.value = 'A public CDN URL is not configured for this asset. Add an HTTPS image URL or configure BUNNY_CDN_HOSTNAME.'
+    return
+  }
+  if (!course.value) return
+  resetMessages()
+  saving.value = true
+  try {
+    const updated = await updateCourse(course.value.id, {
+      title: course.value.title,
+      slug: course.value.slug,
+      description: course.value.description || undefined,
+      priceInPaise: course.value.priceInPaise,
+      thumbnailUrl: asset.publicUrl,
+    })
+    course.value = updated
+    successMessage.value = 'Course thumbnail updated.'
+  } catch (error) {
+    errorMessage.value = apiErrorMessage(error, 'Course thumbnail could not be updated.')
   } finally { saving.value = false }
 }
 async function uploadStorageFile(topicId: string, event: Event) {
@@ -199,15 +342,16 @@ async function uploadStorageFile(topicId: string, event: Event) {
   resetMessages()
   uploading.value = true
   try {
-    const result = await uploadAsset(topicId, file)
+    const result = await uploadAsset(topicId, file) as Record<string, unknown>
     const assetId = String(result.assetId || '')
     if (!assetId) throw new Error('The upload finished without an asset ID.')
-    pendingVideoAssetId.value = ''
     selectedAssetId.value = assetId
     selectedAssetTopicId.value = topicId
+    pendingVideoAssetId.value = ''
+    await loadOutline()
     successMessage.value = file.type === 'application/pdf'
-      ? 'PDF uploaded and selected for the next file lesson.'
-      : 'Image uploaded and selected for the next file lesson.'
+      ? 'PDF uploaded. Use the asset library to attach it to a lesson.'
+      : 'Image uploaded. Use the asset library for lesson/course thumbnails.'
   } catch (error) {
     errorMessage.value = apiErrorMessage(error, 'File upload failed. Confirm Bunny Storage is configured and that the file is supported.')
   } finally { uploading.value = false }
@@ -246,8 +390,8 @@ async function uploadVideo(topicId: string, event: Event) {
       })
       upload.start()
     })
-    successMessage.value = 'Video uploaded. Bunny must finish processing before you can attach it to a lesson. Use Refresh status below.'
     await loadOutline()
+    successMessage.value = 'Video uploaded. Wait until status is ready before selecting it for a lesson.'
   } catch (error) {
     errorMessage.value = apiErrorMessage(error, 'Video upload failed. Check Bunny Stream configuration and upload access.')
   } finally { uploading.value = false }
@@ -257,7 +401,8 @@ async function refreshVideo(assetId: string) {
   try {
     const result = await refreshAssetStatus(assetId)
     const status = String(result.status || 'unknown')
-    successMessage.value = 'Video status: ' + status + '. Select the asset for a video lesson when it is ready.'
+    await loadOutline()
+    successMessage.value = 'Video status: ' + status + '. Choose the asset when it is ready.'
     if (status === 'ready') {
       selectedAssetId.value = assetId
       pendingVideoAssetId.value = ''
@@ -275,11 +420,11 @@ function beginEdit(kind: EditableKind, item: ContentItem) {
   editLessonType.value = (item.lessonType || 'text') as 'text' | 'video' | 'file'
   editLessonContent.value = item.content ?? ''
   editMediaAssetId.value = item.mediaAssetId ?? ''
+  editThumbnailUrl.value = item.thumbnailUrl ?? ''
   editDuration.value = Number(item.durationSeconds ?? 0)
   editPreview.value = Boolean(item.isPreview)
   resetMessages()
 }
-
 async function saveEditedContent() {
   const target = editTarget.value
   if (!target) return
@@ -292,11 +437,11 @@ async function saveEditedContent() {
       description: editDescription.value.trim() || undefined,
       sortOrder: Number(editSortOrder.value || 0),
     }
-    if (target.kind === 'subject') {
-      await updateSubject(target.item.id, basic)
-    } else if (target.kind === 'topic') {
-      await updateTopic(target.item.id, basic)
-    } else {
+    if (target.kind === 'subject') await updateSubject(target.item.id, basic)
+    else if (target.kind === 'topic') await updateTopic(target.item.id, basic)
+    else if (target.kind === 'chapter') await updateChapter(target.item.id, basic)
+    else if (target.kind === 'chapterPart') await updateChapterPart(target.item.id, basic)
+    else {
       await updateLesson(target.item.id, {
         title: basic.title,
         slug: basic.slug,
@@ -306,18 +451,22 @@ async function saveEditedContent() {
         durationSeconds: Number(editDuration.value || 0),
         isPreview: editPreview.value,
         sortOrder: basic.sortOrder,
+        thumbnailUrl: editThumbnailUrl.value.trim() || undefined,
+        chapterId: target.item.chapterId || undefined,
+        chapterPartId: target.item.chapterPartId || undefined,
       })
     }
     editTarget.value = null
     await loadOutline()
-    successMessage.value = target.kind.charAt(0).toUpperCase() + target.kind.slice(1) + ' updated.'
+    successMessage.value = target.kind === 'chapterPart'
+      ? 'Chapter part updated.'
+      : target.kind.charAt(0).toUpperCase() + target.kind.slice(1) + ' updated.'
   } catch (error) {
     errorMessage.value = apiErrorMessage(error, 'The changes could not be saved.')
   } finally {
     saving.value = false
   }
 }
-
 async function archiveContent(kind: EditableKind, item: ContentItem) {
   if (!import.meta.client || !window.confirm('Archive "' + item.title + '"? Child content will also be archived when applicable.')) return
   resetMessages()
@@ -325,16 +474,17 @@ async function archiveContent(kind: EditableKind, item: ContentItem) {
   try {
     if (kind === 'subject') await deleteSubject(item.id)
     else if (kind === 'topic') await deleteTopic(item.id)
+    else if (kind === 'chapter') await deleteChapter(item.id)
+    else if (kind === 'chapterPart') await deleteChapterPart(item.id)
     else await deleteLesson(item.id)
     await loadOutline()
-    successMessage.value = kind.charAt(0).toUpperCase() + kind.slice(1) + ' archived.'
+    successMessage.value = kind === 'chapterPart' ? 'Chapter part archived.' : kind.charAt(0).toUpperCase() + kind.slice(1) + ' archived.'
   } catch (error) {
     errorMessage.value = apiErrorMessage(error, 'This item could not be archived.')
   } finally {
     saving.value = false
   }
 }
-
 async function openLesson(lesson: ContentItem) {
   resetMessages()
   playbackLesson.value = lesson
