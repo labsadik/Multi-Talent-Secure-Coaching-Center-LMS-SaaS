@@ -5,7 +5,17 @@ Multi-tenant learning management platform with a Rust API and a Nuxt.js web fron
 ## Repository layout
 
 - **backend/** — Rust, Axum/Tokio, MongoDB API, HTTP security, cookie-session refresh endpoints, tenant-scoped course/content workflows, media/payment integrations, and backend smoke tests.
-- **frontend/** — Nuxt 4, Vue 3, and Tailwind CSS 4 website with an HttpOnly-cookie BFF, registration/sign-in, course authoring, learner enrolment/progress, company users, and payment settings.
+- **frontend/** — Nuxt 4, Vue 3, and Tailwind CSS 4 website with an HttpOnly-cookie BFF, course authoring, a company public-page/theme editor, branded course catalogues, learner checkout/progress, company users, and payment settings.
+
+## Where company features live
+
+- Company workspace/course dashboard: `/dashboard`
+- Public page and theme editor: `/dashboard/site`
+- Public company page: `/p/<company-slug>` (publish the page in its editor)
+- Course curriculum and media asset library: open a course from the dashboard, then choose **Manage content**.
+- Company Razorpay/payment and plan settings: `/dashboard/settings`
+
+The course curriculum is organised as Subject → Part → Chapter → Chapter part → Lesson. Lessons can be text, video or file content; image/PDF/video assets are managed from the selected part's asset library.
 
 ## Start the backend
 
