@@ -8,9 +8,8 @@ export default defineNuxtConfig({
     plugins: [tailwindcss()],
   },
   runtimeConfig: {
-    public: {
-      apiBase: 'http://127.0.0.1:8080',
-    },
+    // Private server-side API origin. Do not expose bearer tokens or secrets to the browser.
+    apiInternalBase: 'http://127.0.0.1:8080',
   },
   typescript: {
     strict: true,
