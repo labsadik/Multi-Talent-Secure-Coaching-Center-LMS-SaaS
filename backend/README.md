@@ -1,87 +1,65 @@
-# Newage Rust API
+# Backend
 
-This is the Rust backend foundation for the multi-tenant Newage LMS SaaS. The Nuxt.js frontend is intentionally held until API contracts and tenant security have been exercised.
+The Newage backend is a Rust HTTP API. It handles authentication, company-scoped permissions, course and curriculum data, learner progress, media access, public company pages, and course payment verification.
 
-## Included
+## Requirements
 
-- Axum/Tokio HTTP server with graceful shutdown, structured JSON logs, security headers, exact-origin CORS, rate limits, and request body limits.
-- Centralized configuration from process environment variables and a local `.env` via dotenvy. Process environment variables take precedence.
-- MongoDB connection pooling and unique indexes for company slugs, company-scoped users/course slugs, learning content, enrollments, and course payments.
-- Company-owner and learner registration, Argon2 password hashing, tenant-scoped login, short-lived JWT access tokens with issuer/audience validation, and database revalidation of the user's active status and current role on authenticated requests.
-- Opaque refresh sessions with SHA-256 hash-only storage, 30-day sliding inactivity expiry, TTL cleanup, explicit logout revocation, and HttpOnly-cookie handling through the Nuxt BFF.
-- Opaque, 256-bit refresh-session credentials with SHA-256 hash-only storage, 30-day sliding inactivity expiry, TTL cleanup, explicit logout revocation, and server-side HttpOnly-cookie handling in the Nuxt BFF.
-- Tenant-aware course create/list/publish, subject/topic/lesson creation and discovery, preview-only lesson listings for non-enrolled learners, and learner progress/completion summaries.
-- Tenant owner/admin company-user listing, creation, role updates, and disable/enable workflows.
-- Bunny Storage topic-scoped file uploads with MIME/signature/size validation and authenticated downloads; Bunny Stream per-course collections, short-lived TUS upload tickets, encoding-status synchronization, and signed playback access.
-- Per-company Razorpay credentials encrypted with AES-256-GCM, server-calculated course order amounts, company-secret-verified payment webhooks, and idempotent enrollment/payment writes. Each company sells published courses through its own Razorpay account; there is no platform plan checkout.
-- CI for formatting, unit tests, Clippy, release compilation, and HTTP smoke tests against a temporary MongoDB service. Smoke tests cover health/readiness, security headers, auth guards, registration/login, role enforcement, course lifecycle, and cross-tenant isolation.
+- Rust stable toolchain, Rust 1.85 or newer.
+- MongoDB 7 for local development, or a configured MongoDB Atlas database.
+- A local environment file created from the example.
 
-This is a substantial backend foundation, not yet a complete production LMS. Before a public production launch, remaining work includes email verification/password reset and transactional email, fuller content edit/delete workflows, shared/distributed rate limiting for multi-instance deployments, audit logs and operational alerting, and end-to-end verification against real Bunny/Razorpay sandbox accounts. Production TLS, secrets, backups, deployment monitoring, and a documented secret-rotation procedure must also be configured. Do not treat a green CI run as a substitute for provider sandbox tests or production security review.
+## Run locally
 
-## Local setup
+From the repository root, prepare the development settings and database:
 
-1. Install a current stable Rust toolchain and MongoDB Community Server, or create a MongoDB Atlas database.
-2. Copy `backend/.env.example` to `backend/.env` and replace development secrets. Keep the real `.env` untracked.
-3. Start MongoDB, then run these commands from the repository root:
+    Copy-Item .\backend\.env.example .\backend\.env
+    docker compose -f compose.dev.yml up -d mongo
 
-   ```bash
-   cd backend
-   cargo fmt --all
-   cargo test --all-targets
-   cargo clippy --all-targets
-   cargo run
-   ```
+Review backend/.env, then start the API:
 
-4. Confirm `GET http://127.0.0.1:8080/health/live` returns `{"status":"live"}` and `GET http://127.0.0.1:8080/health/ready` returns `{"status":"ready","database":"ok"}`.
-5. In a second terminal, run `backend/scripts/smoke-test.sh` from the repository root (or `scripts/smoke-test.sh` from `backend/`). It creates test companies, a learner, and a course in the configured database. **Run it only against a disposable development/test database, never production.** Requires `curl` and `jq`.
+    cd backend
+    cargo run
 
-The API listener defaults to `127.0.0.1:8080`. Set `HOST=0.0.0.0` only in a container or deployment environment where a reverse proxy/firewall controls ingress.
+The default listener is 127.0.0.1:8080.
 
-## Environment variables
+Check these endpoints before starting the frontend:
 
-All runtime configuration is read from environment variables; a local `.env` is loaded for development. See `.env.example` for supported settings.
+- http://127.0.0.1:8080/health/live — confirms that the API process is responding.
+- http://127.0.0.1:8080/health/ready — confirms that the API can reach MongoDB.
 
-Required: `APP_ENV`, `MONGODB_URI`, `MONGODB_DATABASE`, `JWT_SECRET`, `JWT_ISSUER`, `JWT_AUDIENCE`, and `CORS_ALLOWED_ORIGINS`.
+## Configuration
 
-Optional upload/playback settings include `MAX_ASSET_UPLOAD_BYTES`, `BUNNY_TUS_ENDPOINT`, `BUNNY_UPLOAD_SIGNATURE_TTL_SECONDS`, `BUNNY_STREAM_TOKEN_AUTH_KEY`, and `BUNNY_PLAYBACK_TOKEN_TTL_SECONDS`. Enable Embed View Token Authentication in the Bunny Stream library security settings before using signed playback. Direct browser video uploads use a short-lived TUS signature; the Bunny API key never leaves the server. Storage uploads are streamed through the API and bounded by both request and asset size caps.
+The API reads environment variables from the process environment and, for local development, from backend/.env. Process environment values take precedence.
 
-A company's Razorpay key ID, API secret, and webhook secret are submitted through its authenticated settings endpoint. Only encrypted API/webhook secrets are stored in MongoDB; `APP_ENCRYPTION_KEY_BASE64` is required in production and must be managed as a durable secret with a rotation/backup plan.
+Required settings include:
 
-Razorpay settings are configured separately by each company in **Dashboard → Course payments**. The company Key ID, API secret, and webhook secret are stored encrypted, and order creation, payment verification, and webhook enrollment are scoped to that company's courses. No global/platform Razorpay keys or subscription plan price variables are required.
+- **APP_ENV** — use development locally and production in deployment.
+- **MONGODB_URI** and **MONGODB_DATABASE** — database connection and name.
+- **JWT_SECRET**, **JWT_ISSUER**, and **JWT_AUDIENCE** — access-token settings. Use a unique random secret of at least 32 bytes for every environment.
+- **CORS_ALLOWED_ORIGINS** — comma-separated exact web origins, without wildcard values or trailing slashes.
+- **APP_ENCRYPTION_KEY_BASE64** — required in production; it must decode to exactly 32 bytes.
 
-Optional provider configuration must be supplied in matching pairs:
-- Bunny Storage: `BUNNY_STORAGE_ZONE` + `BUNNY_STORAGE_API_KEY`
-- Bunny Stream: `BUNNY_STREAM_LIBRARY_ID` + `BUNNY_STREAM_API_KEY`
-- Course payments: company-specific Razorpay credentials saved in workspace settings
+Optional media configuration is documented in backend/.env.example. Bunny Storage requires both **BUNNY_STORAGE_ZONE** and **BUNNY_STORAGE_API_KEY**. Bunny Stream requires both **BUNNY_STREAM_LIBRARY_ID** and **BUNNY_STREAM_API_KEY**. Do not put provider secrets in the frontend environment or in client-side code.
 
-`APP_ENCRYPTION_KEY_BASE64` must decode to 32 bytes when set and is mandatory in production. Generate one with `openssl rand -base64 32`. Use a separate random JWT secret per environment. Never put secrets in frontend variables, client bundles, logs, repository files, or issue comments.
+Each company configures its own Razorpay key ID, API secret, and webhook secret through its workspace settings. The backend verifies payments and grants access based on server-side payment state, not only on the browser checkout callback.
 
-## Main API routes
+## Development checks
 
-- `GET /` — service identity.
-- `GET /health/live` and `GET /health/ready` — liveness and MongoDB readiness.
-- `POST /api/v1/auth/register`, `POST /api/v1/auth/register-learner`, `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout`, `GET /api/v1/auth/me` — identity and authentication.
-- `GET/POST /api/v1/courses`, `POST /api/v1/courses/{course_id}/publish` — tenant-scoped course workflows.
-- `GET/POST /api/v1/courses/{course_id}/subjects`, `GET/POST /api/v1/subjects/{subject_id}/topics`, `GET/POST /api/v1/topics/{topic_id}/lessons` — learning content.
-- `GET/POST /api/v1/company/users` and `PATCH /api/v1/company/users/{user_id}` — company user management.
-- `GET /api/v1/me/courses`, `PUT /api/v1/lessons/{lesson_id}/progress`, `GET /api/v1/courses/{course_id}/my-progress` — learner progress.
-- Media: `PUT /api/v1/topics/{topic_id}/assets`, `POST /api/v1/topics/{topic_id}/video-upload-ticket`, `GET /api/v1/assets/{asset_id}/download`, `GET /api/v1/lessons/{lesson_id}/playback`.
-- Payments: `POST /api/v1/courses/{course_id}/orders`, `POST /api/v1/payments/verify`, `POST /api/v1/webhooks/razorpay` — company-specific course orders, verification, and captured-payment webhook.
+Run from the backend directory:
 
-Registration JSON fields: `companyName`, `companySlug`, `name`, `email`, `password`. Passwords must be 12–128 characters. Course creation requires an `Authorization: Bearer <access-token>` header and accepts `title`, `slug`, `description`, and `priceInPaise`. Price is stored in integer paise (for example, `49900` means INR 499.00).
+    cargo fmt --all --check
+    cargo test --all-targets
+    cargo clippy --all-targets
+    cargo build --release
 
-## Security and deployment notes
+The API smoke test script creates test data. Run it only against a disposable development or test database, never a production database. It requires curl and jq.
 
-- Never commit `.env`, real credentials, or generated keys. The repository contains `.env.example` only.
-- MongoDB documents are shared between tenants. Handlers must filter by the authenticated tenant's company ID; never accept an untrusted client-supplied tenant ID as authorization.
-- Provider API keys remain server-side. Do not return Bunny AccessKey or Razorpay secrets to browsers.
-- Configure TLS at a trusted reverse proxy/load balancer. The current rate limiter is in-memory and per process; deploy a shared rate-limit store or edge gateway before horizontally scaling or public production launch.
-- Course payment amounts must come from server-side database records. Success depends on verified payment signatures/webhooks and idempotent server-side state transitions, never frontend redirects alone.
-- Course payment amounts come from the tenant's stored course record; never accept a client-supplied payment amount. Access depends on verified payment state, not on the browser checkout callback alone.
+From the backend directory:
 
+    bash scripts/smoke-test.sh
 
-## Refresh sessions and frontend integration
+## Production
 
-Login and registration responses include an opaque refresh credential for server-to-server/session management. The Nuxt BFF keeps both the access JWT and refresh credential in HttpOnly, SameSite=Lax cookies; browser JavaScript receives only the public user/company profile. The backend stores only the SHA-256 digest of refresh credentials in the refresh_sessions collection, with unique-token and TTL indexes. The 15-minute (configurable JWT_TTL_SECONDS) access JWT is renewed when needed. Refresh activity extends a 30-day inactivity window; POST /api/v1/auth/logout revokes the refresh session. Do not expose the refresh credential or call the server session endpoints from an untrusted cross-origin form.
+Do not use development secrets or a local development database for a public release. Configure TLS, production credentials, a durable MongoDB deployment, backups, log collection, monitoring, and a secret-rotation process. The API rate limiter is in memory and per process, so a multi-instance deployment needs a shared rate-limit layer or an appropriate gateway.
 
-Test session restoration, access expiry, explicit logout, and revoked-token rejection with the Nuxt BFF as part of release testing. The backend smoke script validates refresh and logout against a disposable MongoDB.
+See [DEPLOYMENT.md](../DEPLOYMENT.md) for the release checklist, provider webhooks, and production environment settings.
