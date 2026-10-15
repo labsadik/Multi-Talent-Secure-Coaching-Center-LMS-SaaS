@@ -10,7 +10,9 @@ use serde::{Deserialize, Serialize};
 use crate::{
     auth::{valid_slug, AuthUser},
     error::{AppError, AppResult},
+    integrations::{bunny_storage::BunnyStorage, bunny_stream::BunnyStream},
     state::AppState,
+    tenant::require_active_company,
 };
 
 #[derive(Debug, Deserialize)]
@@ -415,7 +417,14 @@ pub async fn create_lesson(
         .get_object_id("subjectId")
         .map_err(|_| AppError::Internal)?
         .to_owned();
-    visible_course(&state, &auth.company_id, &course_id, true).await?;
+    let course = visible_course(&state, &auth.company_id, &course_id, true).await?;
+    let company = require_active_company(&state.db, &auth.company_id).await?;
+    let subject = state.db.collection::<Document>("subjects").find_one(doc! {
+        "_id": subject_id.clone(),
+        "companyId": auth.company_id.clone(),
+        "courseId": course_id.clone(),
+        "deletedAt": { "$exists": false },
+    }).await?.ok_or(AppError::NotFound)?;
 
     let title = input.title.trim().to_owned();
     let slug = input.slug.trim().to_ascii_lowercase();
@@ -433,19 +442,22 @@ pub async fn create_lesson(
     if chapter_id.is_some() != chapter_part_id.is_some() {
         return Err(AppError::BadRequest("chapter and chapter-part IDs must be supplied together"));
     }
+    let mut chapter_document: Option<Document> = None;
+    let mut chapter_part_document: Option<Document> = None;
     if let (Some(chapter_id), Some(chapter_part_id)) = (&chapter_id, &chapter_part_id) {
         let chapter = state.db.collection::<Document>("chapters").find_one(doc! {
             "_id": chapter_id.clone(), "companyId": auth.company_id.clone(),
             "courseId": course_id.clone(), "subjectId": subject_id.clone(),
             "topicId": topic_id.clone(), "deletedAt": { "$exists": false },
         }).await?.ok_or(AppError::BadRequest("chapter does not belong to this course part"))?;
-        let _ = chapter;
-        state.db.collection::<Document>("chapter_parts").find_one(doc! {
+        let chapter_part = state.db.collection::<Document>("chapter_parts").find_one(doc! {
             "_id": chapter_part_id.clone(), "companyId": auth.company_id.clone(),
             "courseId": course_id.clone(), "subjectId": subject_id.clone(),
             "topicId": topic_id.clone(), "chapterId": chapter_id.clone(),
             "deletedAt": { "$exists": false },
         }).await?.ok_or(AppError::BadRequest("chapter part does not belong to this chapter"))?;
+        chapter_document = Some(chapter);
+        chapter_part_document = Some(chapter_part);
     }
 
     if !valid_title_slug(&title, &slug)
@@ -470,6 +482,7 @@ pub async fn create_lesson(
         _ => {}
     }
 
+    let mut asset_for_lesson: Option<Document> = None;
     if let Some(asset_id) = &media_asset_id {
         // PDF files and images are both valid file lesson attachments. Video lessons
         // may only reference a ready Bunny Stream video asset.
@@ -495,11 +508,17 @@ pub async fn create_lesson(
             .find_one(asset_filter)
             .await?
             .ok_or(AppError::BadRequest("media asset does not belong to this topic or is not ready"))?;
-        let _ = asset;
+        if let Some(asset_part_id) = asset.get_object_id("chapterPartId").ok() {
+            if chapter_part_id.as_ref() != Some(asset_part_id) {
+                return Err(AppError::BadRequest("media asset was uploaded for a different chapter part"));
+            }
+        }
+        asset_for_lesson = Some(asset);
     }
 
+    let lesson_id = ObjectId::new();
     let document = doc! {
-        "_id": ObjectId::new(),
+        "_id": lesson_id.clone(),
         "companyId": auth.company_id.clone(),
         "courseId": course_id,
         "subjectId": subject_id,
@@ -520,12 +539,123 @@ pub async fn create_lesson(
         "createdAt": DateTime::now(),
         "updatedAt": DateTime::now(),
     };
+    // When curriculum context is available, put storage files under the lesson's
+    // own folder and move Stream videos to a lesson-specific collection. File uploads
+    // are copied first; the previous path remains valid until MongoDB points to the new
+    // path, avoiding a broken asset if any provider call fails.
+    let mut pending_storage_move: Option<(String, String)> = None;
+    let mut lesson_stream_collection: Option<String> = None;
+    let mut stream_title: Option<String> = None;
+    if let (Some(asset), Some(chapter), Some(chapter_part)) = (
+        asset_for_lesson.as_ref(),
+        chapter_document.as_ref(),
+        chapter_part_document.as_ref(),
+    ) {
+        let company_slug = company.get_str("slug").unwrap_or_default();
+        let course_slug = course.get_str("slug").unwrap_or_default();
+        let subject_slug = subject.get_str("slug").unwrap_or_default();
+        let topic_slug = topic.get_str("slug").unwrap_or_default();
+        let chapter_slug = chapter.get_str("slug").unwrap_or_default();
+        let chapter_part_slug = chapter_part.get_str("slug").unwrap_or_default();
+        let chapter_id_hex = chapter.get_object_id("_id").map_err(|_| AppError::Internal)?.to_hex();
+        let chapter_part_id_hex = chapter_part.get_object_id("_id").map_err(|_| AppError::Internal)?.to_hex();
+        let lesson_id_hex = lesson_id.to_hex();
+        let lesson_folder = (&lesson_id_hex[..], &slug[..]);
+
+        match asset.get_str("provider").unwrap_or_default() {
+            "bunny_storage" => {
+                let old_path = asset.get_str("storagePath").map(str::to_owned).map_err(|_| AppError::Internal)?;
+                let filename = old_path.rsplit('/').next().filter(|part| !part.is_empty()).ok_or(AppError::Internal)?;
+                let target_path = BunnyStorage::course_content_path(
+                    &auth.company_id.to_hex(),
+                    company_slug,
+                    &course_id.to_hex(),
+                    course_slug,
+                    &subject_id.to_hex(),
+                    subject_slug,
+                    &topic_id.to_hex(),
+                    topic_slug,
+                    Some((&chapter_id_hex, chapter_slug)),
+                    Some((&chapter_part_id_hex, chapter_part_slug)),
+                    Some(lesson_folder),
+                    "assets",
+                    filename,
+                )?;
+                let content_type = asset.get_str("contentType").map(str::to_owned).map_err(|_| AppError::Internal)?;
+                let storage = BunnyStorage::from_settings(&state.settings, state.http.clone())?;
+                let bytes = storage.download_bytes(&old_path, state.settings.max_asset_upload_bytes).await?;
+                storage.upload_bytes(&target_path, &content_type, bytes).await?;
+                pending_storage_move = Some((old_path, target_path));
+            }
+            "bunny_stream" => {
+                let collection_name = format!(
+                    "c-{}-cr-{}-p-{}-l-{}",
+                    auth.company_id.to_hex(),
+                    course_id.to_hex(),
+                    chapter_part_id_hex,
+                    lesson_id_hex,
+                );
+                let stream = BunnyStream::from_settings(&state.settings, state.http.clone())?;
+                let collection_id = stream.create_collection(&collection_name).await?;
+                let path_title = format!(
+                    "{}/{}/{}/{}/{}/{}/{}",
+                    company_slug, course_slug, subject_slug, topic_slug,
+                    chapter_slug, chapter_part_slug, title
+                );
+                stream_title = Some(path_title.chars().take(160).collect());
+                lesson_stream_collection = Some(collection_id);
+            }
+            _ => {}
+        }
+    }
+
     state
         .db
         .collection::<Document>("lessons")
         .insert_one(document.clone())
         .await
         .map_err(AppError::from_mongo)?;
+
+    if let Some(asset) = asset_for_lesson.as_ref() {
+        let assets = state.db.collection::<Document>("assets");
+        let mut set_fields = doc! {
+            "lessonId": lesson_id.clone(),
+            "chapterId": chapter_id.clone(),
+            "chapterPartId": chapter_part_id.clone(),
+            "updatedAt": DateTime::now(),
+        };
+        if let Some((_, target_path)) = pending_storage_move.as_ref() {
+            set_fields.insert("storagePath", target_path);
+        }
+        if let Some(collection_id) = lesson_stream_collection.as_ref() {
+            set_fields.insert("bunnyCollectionId", collection_id);
+        }
+
+        if let Some(collection_id) = lesson_stream_collection.as_ref() {
+            let video_id = asset.get_str("providerVideoId").map(str::to_owned).map_err(|_| AppError::Internal)?;
+            let stream = BunnyStream::from_settings(&state.settings, state.http.clone())?;
+            let title_for_stream = stream_title.as_deref().unwrap_or(&title);
+            if let Err(error) = stream.update_video(&video_id, title_for_stream, collection_id).await {
+                let _ = state.db.collection::<Document>("lessons").delete_one(doc! { "_id": lesson_id.clone(), "companyId": auth.company_id.clone() }).await;
+                if let Some((_, target_path)) = pending_storage_move.as_ref() {
+                    let storage = BunnyStorage::from_settings(&state.settings, state.http.clone())?;
+                    let _ = storage.delete_object(target_path).await;
+                }
+                return Err(error);
+            }
+        }
+
+        assets.update_one(
+            doc! { "_id": asset.get_object_id("_id").map_err(|_| AppError::Internal)?.to_owned(), "companyId": auth.company_id.clone() },
+            doc! { "$set": set_fields },
+        ).await.map_err(AppError::from_mongo)?;
+
+        if let Some((old_path, _)) = pending_storage_move {
+            let storage = BunnyStorage::from_settings(&state.settings, state.http.clone())?;
+            // Cleanup is best-effort; after the DB pointer changes the old key is no longer used.
+            let _ = storage.delete_object(&old_path).await;
+        }
+    }
 
     Ok((StatusCode::CREATED, Json(content_response(document)?)))
 }
