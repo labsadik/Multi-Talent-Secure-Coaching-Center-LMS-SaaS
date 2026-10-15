@@ -163,7 +163,7 @@ async fn resolve_chapter_upload_context(
 }
 
 fn safe_original_filename(value: Option<&str>, fallback: &str) -> String {
-    let name = value.unwrap_or(fallback).rsplit(['/', '\\\\']).next().unwrap_or(fallback);
+    let name = value.unwrap_or(fallback).rsplit(['/', '\\']).next().unwrap_or(fallback);
     let cleaned: String = name.chars().filter(|ch| !ch.is_control()).take(160).collect();
     let cleaned = cleaned.trim();
     if cleaned.is_empty() { fallback.to_owned() } else { cleaned.to_owned() }
