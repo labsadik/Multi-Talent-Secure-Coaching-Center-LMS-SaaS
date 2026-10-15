@@ -509,7 +509,7 @@ pub async fn create_lesson(
             .await?
             .ok_or(AppError::BadRequest("media asset does not belong to this topic or is not ready"))?;
         if let Some(asset_part_id) = asset.get_object_id("chapterPartId").ok() {
-            if chapter_part_id.as_ref() != Some(asset_part_id) {
+            if chapter_part_id.as_ref() != Some(&asset_part_id) {
                 return Err(AppError::BadRequest("media asset was uploaded for a different chapter part"));
             }
         }
