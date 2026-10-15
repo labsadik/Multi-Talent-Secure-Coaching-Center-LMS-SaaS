@@ -31,6 +31,18 @@ function Test-TcpPort([string]$HostName, [int]$Port, [int]$TimeoutMs = 800) {
     }
 }
 
+
+function Test-DockerEngine {
+    try {
+        $null = & docker info --format '{{.ServerVersion}}' 2>&1
+        return ($LASTEXITCODE -eq 0)
+    }
+    catch {
+        # Some PowerShell versions treat native-command stderr as a terminating error.
+        return $false
+    }
+}
+
 function Test-ApiReady {
     try {
         $response = Invoke-RestMethod -Uri 'http://127.0.0.1:8080/health/ready' -TimeoutSec 2
@@ -84,8 +96,7 @@ if (-not (Test-TcpPort '127.0.0.1' 27017)) {
 
     # The Docker CLI can be installed while the Docker Desktop Linux engine is stopped.
     # Check the daemon before trying docker compose so the failure is clear and recoverable.
-    & docker info --format '{{.ServerVersion}}' 2>$null | Out-Null
-    if ($LASTEXITCODE -ne 0) {
+    if (-not (Test-DockerEngine)) {
         $dockerDesktopCandidates = @(
             (Join-Path $env:ProgramFiles 'Docker\Docker\Docker Desktop.exe'),
             (Join-Path $env:LOCALAPPDATA 'Docker\Docker Desktop.exe')
@@ -103,13 +114,11 @@ if (-not (Test-TcpPort '127.0.0.1' 27017)) {
 
             $dockerDeadline = (Get-Date).AddMinutes(2)
             while ((Get-Date) -lt $dockerDeadline) {
-                & docker info --format '{{.ServerVersion}}' 2>$null | Out-Null
-                if ($LASTEXITCODE -eq 0) { break }
+                if (Test-DockerEngine) { break }
                 Start-Sleep -Seconds 3
             }
 
-            & docker info --format '{{.ServerVersion}}' 2>$null | Out-Null
-            if ($LASTEXITCODE -ne 0) {
+            if (-not (Test-DockerEngine)) {
                 throw 'Docker Desktop did not start its engine within 2 minutes. Open Docker Desktop, wait until it says the engine is running, then check docker info and retry .\scripts\dev.ps1.'
             }
         }
