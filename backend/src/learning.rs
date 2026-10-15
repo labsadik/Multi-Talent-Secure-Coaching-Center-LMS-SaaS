@@ -615,8 +615,6 @@ pub async fn delete_subject(
     archive_content_collection(&state, "topics", child_filter.clone(), now).await?;
     archive_content_collection(&state, "chapters", child_filter.clone(), now).await?;
     archive_content_collection(&state, "chapter_parts", child_filter.clone(), now).await?;
-    archive_content_collection(&state, "chapters", child_filter.clone(), now).await?;
-    archive_content_collection(&state, "chapter_parts", child_filter.clone(), now).await?;
     archive_content_collection(&state, "lessons", child_filter.clone(), now).await?;
     archive_content_collection(&state, "assets", child_filter, now).await?;
     Ok(StatusCode::NO_CONTENT)
@@ -685,6 +683,8 @@ pub async fn delete_topic(
         "companyId": auth.company_id.clone(), "courseId": course_id.clone(),
         "topicId": topic_id.clone(), "deletedAt": { "$exists": false },
     };
+    archive_content_collection(&state, "chapters", child_filter.clone(), now).await?;
+    archive_content_collection(&state, "chapter_parts", child_filter.clone(), now).await?;
     archive_content_collection(&state, "lessons", child_filter.clone(), now).await?;
     archive_content_collection(&state, "assets", child_filter, now).await?;
     Ok(StatusCode::NO_CONTENT)
