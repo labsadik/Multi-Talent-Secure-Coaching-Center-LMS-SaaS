@@ -43,14 +43,29 @@ export default defineNuxtRouteMiddleware(async (to) => {
     })
   }
 
-  if (to.path === '/workspace/' + slug + '/dashboard' && currentUser.value.role === 'learner') {
+  const dashboardRoot = '/workspace/' + encodeURIComponent(slug) + '/dashboard'
+  const role = currentUser.value.role
+
+  if (to.path === dashboardRoot && role === 'learner') {
     const courseId = typeof to.query.checkoutCourse === 'string' ? to.query.checkoutCourse : ''
     return navigateTo(courseId
-      ? { path: '/workspace/' + encodeURIComponent(slug) + '/dashboard/learn', query: { checkoutCourse: courseId } }
-      : '/workspace/' + encodeURIComponent(slug) + '/dashboard/learn')
+      ? { path: dashboardRoot + '/learn', query: { checkoutCourse: courseId } }
+      : dashboardRoot + '/learn')
   }
 
-  if (to.path === '/workspace/' + slug + '/dashboard/learn' && currentUser.value.role !== 'learner') {
-    return navigateTo('/workspace/' + encodeURIComponent(slug) + '/dashboard')
+  if (to.path === dashboardRoot + '/learn' && role !== 'learner') {
+    return navigateTo(dashboardRoot)
+  }
+
+  // Learners can discover, purchase, and study courses, but cannot enter staff tools.
+  const learnerRestrictedPaths = ['/users', '/site', '/settings'].map((path) => dashboardRoot + path)
+  if (role === 'learner' && learnerRestrictedPaths.some((path) => to.path === path || to.path.startsWith(path + '/'))) {
+    return navigateTo(dashboardRoot + '/learn')
+  }
+
+  // Instructors author courses and manage learners, not workspace branding or billing.
+  const adminOnlyPaths = ['/site', '/settings'].map((path) => dashboardRoot + path)
+  if (role === 'instructor' && adminOnlyPaths.some((path) => to.path === path || to.path.startsWith(path + '/'))) {
+    return navigateTo(dashboardRoot)
   }
 })

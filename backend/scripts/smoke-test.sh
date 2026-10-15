@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 # Run only against a disposable development/test database. This script creates
-# two companies, a learner, and a course; it intentionally does not clean them up.
+# two companies, staff/learner accounts, and courses; it intentionally does not clean them up.
 BASE_URL="${BASE_URL:-http://127.0.0.1:8080}"
 BASE_URL="${BASE_URL%/}"
 
@@ -74,6 +74,10 @@ slug_b="smoke-company-b-$suffix"
 email_a="owner-a-$suffix@example.test"
 email_b="owner-b-$suffix@example.test"
 learner_email="learner-a-$suffix@example.test"
+instructor_email="instructor-a-$suffix@example.test"
+managed_learner_email="managed-learner-a-$suffix@example.test"
+admin_email="admin-a-$suffix@example.test"
+admin_created_by_admin_email="admin-created-by-admin-$suffix@example.test"
 
 payload="$(jq -n --arg name 'Smoke Test Company A' --arg slug "$slug_a" --arg email "$email_a" --arg password "$password" '{companyName:$name,companySlug:$slug,name:"Smoke Test Owner A",email:$email,password:$password}')"
 http 201 "$BASE_URL/api/v1/auth/register" -H 'Content-Type: application/json' --data "$payload"
@@ -109,6 +113,55 @@ http 200 "$BASE_URL/api/v1/auth/me" -H "Authorization: Bearer $token_a"
 cp "$TMP_DIR/body" "$TMP_DIR/me-a.json"
 jq -e --arg slug "$slug_a" '.company.slug == $slug and .user.role == "owner"' "$TMP_DIR/me-a.json" >/dev/null || fail "authenticated identity does not match company A"
 
+# Instructors can manage learners, but cannot create/manage staff accounts.
+payload="$(jq -n --arg email "$instructor_email" --arg password "$password" '{name:"Smoke Test Instructor",email:$email,password:$password,role:"instructor"}')"
+http 201 "$BASE_URL/api/v1/company/users" -X POST -H "Authorization: Bearer $token_a" -H 'Content-Type: application/json' --data "$payload"
+cp "$TMP_DIR/body" "$TMP_DIR/instructor-created.json"
+instructor_id="$(jq -er '.id | select(type == "string" and length > 0)' "$TMP_DIR/instructor-created.json")"
+assert_json "$TMP_DIR/instructor-created.json" '.role == "instructor"' "owner could not create an instructor"
+
+payload="$(jq -n --arg slug "$slug_a" --arg email "$instructor_email" --arg password "$password" '{companySlug:$slug,email:$email,password:$password}')"
+http 200 "$BASE_URL/api/v1/auth/login" -H 'Content-Type: application/json' --data "$payload"
+cp "$TMP_DIR/body" "$TMP_DIR/instructor-login.json"
+token_instructor="$(jq -er '.accessToken | select(type == "string" and length > 0)' "$TMP_DIR/instructor-login.json")"
+assert_json "$TMP_DIR/instructor-login.json" '.user.role == "instructor"' "instructor login failed"
+
+payload="$(jq -n --arg email "$managed_learner_email" --arg password "$password" '{name:"Managed Smoke Learner",email:$email,password:$password,role:"learner"}')"
+http 201 "$BASE_URL/api/v1/company/users" -X POST -H "Authorization: Bearer $token_instructor" -H 'Content-Type: application/json' --data "$payload"
+cp "$TMP_DIR/body" "$TMP_DIR/managed-learner-created.json"
+managed_learner_id="$(jq -er '.id | select(type == "string" and length > 0)' "$TMP_DIR/managed-learner-created.json")"
+assert_json "$TMP_DIR/managed-learner-created.json" '.role == "learner"' "instructor could not create a learner"
+
+http 200 "$BASE_URL/api/v1/company/users" -H "Authorization: Bearer $token_instructor"
+cp "$TMP_DIR/body" "$TMP_DIR/instructor-users.json"
+assert_json "$TMP_DIR/instructor-users.json" 'length == 1 and all(.[]; .role == "learner")' "instructor listing exposed non-learner accounts"
+
+payload="$(jq -n --arg email "staff-blocked-$suffix@example.test" --arg password "$password" '{name:"Blocked Staff",email:$email,password:$password,role:"instructor"}')"
+http 403 "$BASE_URL/api/v1/company/users" -X POST -H "Authorization: Bearer $token_instructor" -H 'Content-Type: application/json' --data "$payload"
+payload="$(jq -n '{role:"instructor"}')"
+http 403 "$BASE_URL/api/v1/company/users/$managed_learner_id" -X PATCH -H "Authorization: Bearer $token_instructor" -H 'Content-Type: application/json' --data "$payload"
+payload="$(jq -n '{status:"disabled"}')"
+http 200 "$BASE_URL/api/v1/company/users/$managed_learner_id" -X PATCH -H "Authorization: Bearer $token_instructor" -H 'Content-Type: application/json' --data "$payload"
+assert_json "$TMP_DIR/body" '.role == "learner" and .status == "disabled"' "instructor could not disable a learner"
+
+# Owners and admins have full workspace-user management, including assigning admin.
+payload="$(jq -n --arg email "$admin_email" --arg password "$password" '{name:"Smoke Test Admin",email:$email,password:$password,role:"admin"}')"
+http 201 "$BASE_URL/api/v1/company/users" -X POST -H "Authorization: Bearer $token_a" -H 'Content-Type: application/json' --data "$payload"
+cp "$TMP_DIR/body" "$TMP_DIR/admin-created.json"
+admin_id="$(jq -er '.id | select(type == "string" and length > 0)' "$TMP_DIR/admin-created.json")"
+assert_json "$TMP_DIR/admin-created.json" '.role == "admin"' "owner could not create an admin"
+
+payload="$(jq -n --arg slug "$slug_a" --arg email "$admin_email" --arg password "$password" '{companySlug:$slug,email:$email,password:$password}')"
+http 200 "$BASE_URL/api/v1/auth/login" -H 'Content-Type: application/json' --data "$payload"
+cp "$TMP_DIR/body" "$TMP_DIR/admin-login.json"
+token_admin="$(jq -er '.accessToken | select(type == "string" and length > 0)' "$TMP_DIR/admin-login.json")"
+assert_json "$TMP_DIR/admin-login.json" '.user.role == "admin"' "admin login failed"
+
+payload="$(jq -n --arg email "$admin_created_by_admin_email" --arg password "$password" '{name:"Admin Created By Admin",email:$email,password:$password,role:"admin"}')"
+http 201 "$BASE_URL/api/v1/company/users" -X POST -H "Authorization: Bearer $token_admin" -H 'Content-Type: application/json' --data "$payload"
+assert_json "$TMP_DIR/body" '.role == "admin"' "admin does not have full user-management permissions"
+http 403 "$BASE_URL/api/v1/company/users/$admin_id" -X PATCH -H "Authorization: Bearer $token_instructor" -H 'Content-Type: application/json' --data "$(jq -n '{status:"disabled"}')"
+
 payload="$(jq -n --arg slug "smoke-course-$suffix" '{title:"Tenant Isolation Smoke Course",slug:$slug,description:"Automated API smoke test",priceInPaise:0}')"
 http 201 "$BASE_URL/api/v1/courses" -H "Authorization: Bearer $token_a" -H 'Content-Type: application/json' --data "$payload"
 cp "$TMP_DIR/body" "$TMP_DIR/course.json"
@@ -136,7 +189,7 @@ jq -e --arg id "$course_id" 'any(.[]; .id == $id and .status == "published")' "$
 
 # Metadata and nested content must support real PATCH/DELETE operations for the owning tenant.
 payload="$(jq -n --arg slug "smoke-course-edited-$suffix" '{title:"Edited Smoke Course",slug:$slug,description:"Updated from smoke test",priceInPaise:1299}')"
-http 200 "$BASE_URL/api/v1/courses/$course_id" -X PATCH -H "Authorization: Bearer $token_a" -H 'Content-Type: application/json' --data "$payload"
+http 200 "$BASE_URL/api/v1/courses/$course_id" -X PATCH -H "Authorization: Bearer $token_instructor" -H 'Content-Type: application/json' --data "$payload"
 cp "$TMP_DIR/body" "$TMP_DIR/course-edited.json"
 assert_json "$TMP_DIR/course-edited.json" '.title == "Edited Smoke Course" and .slug == ("smoke-course-edited-" + "'"$suffix"'") and .priceInPaise == 1299' "course edit did not persist"
 http 404 "$BASE_URL/api/v1/courses/$course_id" -X PATCH -H "Authorization: Bearer $token_b" -H 'Content-Type: application/json' --data "$payload"
@@ -203,7 +256,8 @@ assert_json "$TMP_DIR/body" 'length == 0' "archived lesson is still listed"
 
 # A company owner can brand/publish a tenant-scoped storefront with its published course catalogue.
 payload="$(jq -n --arg display "Smoke Test Public Academy" --arg headline "Learn with Smoke Academy" --arg email "contact-$suffix@example.test" '{displayName:$display,headline:$headline,tagline:"Learn at your pace",about:"Public company page smoke test",theme:"ocean",brandColor:"#2563eb",accentColor:"#14b8a6",logoUrl:null,heroImageUrl:null,contactEmail:$email,isPublished:true}')"
-http 200 "$BASE_URL/api/v1/company/site" -X PUT -H "Authorization: Bearer $token_a" -H 'Content-Type: application/json' --data "$payload"
+http 403 "$BASE_URL/api/v1/company/site" -X PUT -H "Authorization: Bearer $token_instructor" -H 'Content-Type: application/json' --data "$payload"
+http 200 "$BASE_URL/api/v1/company/site" -X PUT -H "Authorization: Bearer $token_admin" -H 'Content-Type: application/json' --data "$payload"
 cp "$TMP_DIR/body" "$TMP_DIR/site-saved.json"
 jq -e --arg path "/p/$slug_a" '.site.isPublished == true and .site.displayName == "Smoke Test Public Academy" and .publicPath == $path' "$TMP_DIR/site-saved.json" >/dev/null || fail "company public site configuration did not persist"
 http 200 "$BASE_URL/api/v1/public/companies/$slug_a"
@@ -233,9 +287,12 @@ payload="$(jq -n --arg slug "learner-must-not-create-$suffix" '{title:"Learner M
 http 403 "$BASE_URL/api/v1/courses" -H "Authorization: Bearer $learner_token" -H 'Content-Type: application/json' --data "$payload"
 cp "$TMP_DIR/body" "$TMP_DIR/learner-forbidden.json"
 assert_json "$TMP_DIR/learner-forbidden.json" '.error.code == "forbidden"' "learner was allowed to create a course"
+http 200 "$BASE_URL/api/v1/courses" -H "Authorization: Bearer $learner_token"
+http 200 "$BASE_URL/api/v1/me/courses" -H "Authorization: Bearer $learner_token"
+http 403 "$BASE_URL/api/v1/company/users" -H "Authorization: Bearer $learner_token"
 
 payload="$(jq -n --arg refreshToken "$refresh_a" '{refreshToken:$refreshToken}')"
 http 204 "$BASE_URL/api/v1/auth/logout" -H 'Content-Type: application/json' --data "$payload"
 http 401 "$BASE_URL/api/v1/auth/refresh" -H 'Content-Type: application/json' --data "$payload"
 
-printf 'PASS: health, readiness, security headers, auth guard, registration/login, refresh/logout, learner RBAC, course lifecycle, and tenant isolation.\n'
+printf 'PASS: health, readiness, auth/session, learner/instructor/admin RBAC, course lifecycle, company settings, and tenant isolation.\n'
