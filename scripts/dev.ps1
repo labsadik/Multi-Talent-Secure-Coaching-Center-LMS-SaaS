@@ -81,10 +81,47 @@ if (-not (Test-TcpPort '127.0.0.1' 27017)) {
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
         throw "MongoDB is not reachable at 127.0.0.1:27017 and Docker is not installed. Start MongoDB locally or install Docker Desktop, then run this script again. The Rust API cannot start without a reachable database."
     }
+
+    # The Docker CLI can be installed while the Docker Desktop Linux engine is stopped.
+    # Check the daemon before trying docker compose so the failure is clear and recoverable.
+    & docker info --format '{{.ServerVersion}}' 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        $dockerDesktopCandidates = @(
+            (Join-Path $env:ProgramFiles 'Docker\Docker\Docker Desktop.exe'),
+            (Join-Path $env:LOCALAPPDATA 'Docker\Docker Desktop.exe')
+        ) | Where-Object { $_ -and (Test-Path $_) }
+
+        if ($dockerDesktopCandidates.Count -gt 0) {
+            $dockerDesktopPath = $dockerDesktopCandidates[0]
+            Write-Host 'Docker Desktop is installed but its engine is not responding. Starting Docker Desktop...' -ForegroundColor Yellow
+            try {
+                Start-Process -FilePath $dockerDesktopPath | Out-Null
+            }
+            catch {
+                throw "Could not launch Docker Desktop at '$dockerDesktopPath'. Open Docker Desktop manually, wait for its engine to start, then run this script again."
+            }
+
+            $dockerDeadline = (Get-Date).AddMinutes(2)
+            while ((Get-Date) -lt $dockerDeadline) {
+                & docker info --format '{{.ServerVersion}}' 2>$null | Out-Null
+                if ($LASTEXITCODE -eq 0) { break }
+                Start-Sleep -Seconds 3
+            }
+
+            & docker info --format '{{.ServerVersion}}' 2>$null | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                throw 'Docker Desktop did not start its engine within 2 minutes. Open Docker Desktop, wait until it says the engine is running, then check docker info and retry .\scripts\dev.ps1.'
+            }
+        }
+        else {
+            throw "Docker CLI is installed, but the Docker Desktop engine is unavailable and the Desktop app was not found in the standard install paths. Start Docker Desktop manually or install MongoDB Community Server and start it on 127.0.0.1:27017. Verify Docker with docker info, then rerun this script."
+        }
+    }
+
     Write-Host 'MongoDB is not running on port 27017; starting the repository development MongoDB container...' -ForegroundColor Cyan
     & docker compose -f $composePath up -d mongo
     if ($LASTEXITCODE -ne 0) {
-        throw 'Docker could not start MongoDB. Check that Docker Desktop is running, then run: docker compose -f compose.dev.yml up -d mongo'
+        throw 'Docker is reachable but could not start MongoDB. Check docker compose -f compose.dev.yml logs mongo and make sure Docker Desktop is using Linux containers.'
     }
     $mongoDeadline = (Get-Date).AddSeconds(60)
     while ((Get-Date) -lt $mongoDeadline -and -not (Test-TcpPort '127.0.0.1' 27017)) {
