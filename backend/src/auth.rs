@@ -445,9 +445,10 @@ pub async fn login(
     }
 
     let token = issue_access_token(&state, &user_id, &company_id, &role)?;
+    let refresh_token = create_refresh_session(&state, &user_id, &company_id).await?;
     Ok(Json(AuthResponse {
         access_token: token,
-        refresh_token: input.refresh_token,
+        refresh_token,
         token_type: "Bearer",
         expires_in: state.settings.jwt_ttl_seconds,
         refresh_expires_in: REFRESH_TTL_SECONDS,

@@ -46,7 +46,7 @@ export function publicSession(session: AuthResponse) {
 export async function startSession(event: H3Event, action: 'login' | 'register' | 'register-learner', body: unknown) {
   assertSameOrigin(event)
   try {
-    const session = await $fetch<AuthResponse>('/api/v1/auth/' + action, { baseURL: apiBase(event), method: 'POST', body })
+    const session = await $fetch<AuthResponse>('/api/v1/auth/' + action, { baseURL: apiBase(event), method: 'POST', body: body as Record<string, unknown> })
     setSessionCookies(event, session)
     return publicSession(session)
   } catch (error) { throw passThroughError(error) }
