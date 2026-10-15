@@ -353,6 +353,7 @@ if (lessonType.value !== 'text' && !selectedAssetId.value) {
     await createChapterPartLesson(partId, payload)
     lessonTitle.value = ''
     lessonSlug.value = ''
+    lessonSlugTouched.value = false
     lessonContent.value = ''
     lessonThumbnailUrl.value = ''
     lessonDuration.value = 0
@@ -651,7 +652,7 @@ onMounted(() => { void loadOutline() })
             <div class="flex items-center gap-3"><span class="grid h-9 w-9 place-items-center rounded-xl bg-brand-soft text-sm font-bold text-brand">01</span><div><h3 class="font-semibold">Subject</h3><p class="text-xs text-muted">Main programme section</p></div></div>
             <form class="mt-4 space-y-3" @submit.prevent="saveSubject">
               <input v-model="subjectTitle" required minlength="2" maxlength="140" placeholder="e.g. Mathematics" aria-label="Subject title" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
-              <input v-model="subjectSlug" required minlength="2" maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="mathematics" aria-label="Subject slug" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
+              <input v-model="subjectSlug" @input="subjectSlugTouched = true" required minlength="2" maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="mathematics" aria-label="Subject slug" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
               <button :disabled="saving || !course" class="w-full rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">{{ saving ? 'Saving…' : '+ Add subject' }}</button>
             </form>
           </section>
@@ -663,7 +664,7 @@ onMounted(() => { void loadOutline() })
                 <option value="" disabled>Select a subject</option><option v-for="subject in outline" :key="subject.id" :value="subject.id">{{ subject.title }}</option>
               </select>
               <input v-model="topicTitle" required minlength="2" maxlength="140" placeholder="e.g. Algebra — Part 1" aria-label="Part title" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
-              <input v-model="topicSlug" required minlength="2" maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="algebra-part-1" aria-label="Part slug" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
+              <input v-model="topicSlug" @input="topicSlugTouched = true" required minlength="2" maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="algebra-part-1" aria-label="Part slug" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
               <button :disabled="saving || !selectedSubjectId" class="w-full rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-semibold text-violet-800 disabled:opacity-50">{{ saving ? 'Saving…' : '+ Add part' }}</button>
             </form>
           </section>
@@ -675,7 +676,7 @@ onMounted(() => { void loadOutline() })
                 <option value="" disabled>Select a part</option><option v-for="subject in outline" :key="subject.id + '-heading'" disabled>— {{ subject.title }} —</option><template v-for="subject in outline" :key="subject.id + '-part-options'"><option v-for="part in subject.topics" :key="part.id" :value="part.id">{{ subject.title }} / {{ part.title }}</option></template>
               </select>
               <input v-model="chapterTitle" required minlength="2" maxlength="140" placeholder="e.g. Linear equations" aria-label="Chapter title" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
-              <input v-model="chapterSlug" required minlength="2" maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="linear-equations" aria-label="Chapter slug" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
+              <input v-model="chapterSlug" @input="chapterSlugTouched = true" required minlength="2" maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="linear-equations" aria-label="Chapter slug" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
               <button :disabled="saving || !selectedTopicId" class="w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900 disabled:opacity-50">{{ saving ? 'Saving…' : '+ Add chapter' }}</button>
             </form>
           </section>
@@ -687,7 +688,7 @@ onMounted(() => { void loadOutline() })
                 <option value="" disabled>Select a chapter</option><template v-for="subject in outline" :key="subject.id + '-chapter-head'"><option v-for="topic in subject.topics" :key="topic.id + '-part-heading'" disabled>— {{ subject.title }} / {{ topic.title }} —</option><template v-for="topic in subject.topics" :key="topic.id + '-chapter-options'"><option v-for="chapter in topic.chapters" :key="chapter.id" :value="chapter.id">{{ topic.title }} / {{ chapter.title }}</option></template></template>
               </select>
               <input v-model="chapterPartTitle" required minlength="2" maxlength="140" placeholder="e.g. Worked examples" aria-label="Chapter part title" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
-              <input v-model="chapterPartSlug" required minlength="2" maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="worked-examples" aria-label="Chapter part slug" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
+              <input v-model="chapterPartSlug" @input="chapterPartSlugTouched = true" required minlength="2" maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="worked-examples" aria-label="Chapter part slug" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
               <button :disabled="saving || !selectedChapterId" class="w-full rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-900 disabled:opacity-50">{{ saving ? 'Saving…' : '+ Add chapter part' }}</button>
             </form>
           </section>
@@ -699,7 +700,7 @@ onMounted(() => { void loadOutline() })
                 <option value="" disabled>Select a chapter part</option><template v-for="subject in outline" :key="subject.id + '-lesson-chapter-head'"><template v-for="topic in subject.topics" :key="topic.id + '-lesson-topic'"><template v-for="chapter in topic.chapters" :key="chapter.id + '-lesson-options'"><option :value="''" disabled>— {{ subject.title }} / {{ topic.title }} / {{ chapter.title }} —</option><option v-for="part in chapter.parts" :key="part.id" :value="part.id">{{ topic.title }} / {{ chapter.title }} / {{ part.title }}</option></template></template></template>
               </select>
               <input v-model="lessonTitle" required minlength="2" maxlength="140" placeholder="Lesson title" aria-label="Lesson title" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
-              <input v-model="lessonSlug" required minlength="2" maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="lesson-slug" aria-label="Lesson slug" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
+              <input v-model="lessonSlug" @input="lessonSlugTouched = true" required minlength="2" maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="lesson-slug" aria-label="Lesson slug" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
               <select v-model="lessonType" class="w-full rounded-xl border border-line bg-white px-3.5 py-3 text-sm outline-none focus:border-brand"><option value="text">Text lesson</option><option value="video">Video lesson</option><option value="file">PDF / image / file lesson</option></select>
               <textarea v-if="lessonType === 'text'" v-model="lessonContent" required maxlength="50000" rows="5" placeholder="Write the text lesson…" class="w-full resize-y rounded-xl border border-line px-3.5 py-3 text-sm leading-6 outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
               <div v-else class="rounded-xl border border-dashed border-brand/30 bg-brand-soft/40 p-3"><p class="text-xs leading-5 text-muted">Select the video or file from the asset library on the matching course part. The selected asset must belong to the same part and be ready.</p><div class="mt-2 rounded-lg bg-white px-3 py-2.5"><p class="text-[10px] font-bold uppercase tracking-wider text-muted">Selected asset ID</p><p class="mt-1 break-all font-mono text-xs">{{ selectedAssetId || 'No asset selected' }}</p></div></div>
