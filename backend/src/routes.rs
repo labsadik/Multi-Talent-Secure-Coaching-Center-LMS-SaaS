@@ -18,6 +18,14 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/auth/refresh", post(auth::refresh))
         .route("/api/v1/auth/logout", post(auth::logout))
         .route("/api/v1/auth/me", get(auth::me))
+        .route(
+            "/api/v1/company/site",
+            get(sites::get_company_site).put(sites::update_company_site),
+        )
+        .route(
+            "/api/v1/public/companies/{slug}",
+            get(sites::get_public_company_page),
+        )
         .route("/api/v1/me/courses", get(progress::my_courses))
         .route(
             "/api/v1/company/users",
