@@ -22,7 +22,7 @@ impl BunnyStorage {
             zone: settings
                 .bunny_storage_zone
                 .clone()
-                .ok_or(AppError::ServiceUnavailable)?,
+                .ok_or(AppError::ServiceUnavailable("Bunny Storage"))?,
             api_key: settings
                 .bunny_storage_api_key
                 .clone()

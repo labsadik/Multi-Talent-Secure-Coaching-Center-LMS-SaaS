@@ -1,6 +1,6 @@
 use axum::{extract::State, http::StatusCode, Json};
 use futures_util::TryStreamExt;
-use mongodb::bson::{doc, DateTime, Document};
+use mongodb::bson::{doc, oid::ObjectId, DateTime, Document};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -39,7 +39,7 @@ pub async fn list_courses(
 ) -> AppResult<Json<Vec<CourseResponse>>> {
     require_active_company(&state.db, &auth.company_id).await?;
 
-    let mut cursor = state
+    let cursor = state
         .db
         .collection::<Document>("courses")
         .find(doc! {

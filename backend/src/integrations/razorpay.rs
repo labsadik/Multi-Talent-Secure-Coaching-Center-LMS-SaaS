@@ -36,7 +36,7 @@ impl RazorpayClient {
             key_id: settings
                 .razorpay_key_id
                 .clone()
-                .ok_or(AppError::ServiceUnavailable)?,
+                .ok_or(AppError::ServiceUnavailable("Razorpay"))?,
             key_secret: settings
                 .razorpay_key_secret
                 .clone()
