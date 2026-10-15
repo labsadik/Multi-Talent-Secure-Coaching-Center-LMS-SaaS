@@ -21,6 +21,7 @@ declare global {
 }
 
 const { currentUser, getCourses, getMyCourses, getCourseProgress, createCourseOrder, verifyCoursePayment } = useAuth()
+const route = useRoute()
 const courses = ref<Course[]>([])
 const enrolled = ref<LearnerCourse[]>([])
 const progressByCourse = ref<Record<string, number>>({})
@@ -123,6 +124,11 @@ onMounted(async () => {
     return
   }
   await load()
+  const requestedCourseId = typeof route.query.checkoutCourse === 'string' ? route.query.checkoutCourse : ''
+  if (requestedCourseId) {
+    const requestedCourse = courses.value.find((course) => course.id === requestedCourseId)
+    if (requestedCourse && !enrolledIds.value.has(requestedCourse.id)) await enroll(requestedCourse)
+  }
 })
 </script>
 
