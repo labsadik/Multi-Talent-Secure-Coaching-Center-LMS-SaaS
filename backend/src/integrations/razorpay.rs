@@ -12,6 +12,15 @@ pub struct RazorpayClient {
     key_secret: String,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+pub struct RazorpayPayment {
+    pub id: String,
+    pub order_id: String,
+    pub amount: i64,
+    pub currency: String,
+    pub status: String,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateOrderPayload<'a> {
@@ -45,6 +54,42 @@ impl RazorpayClient {
     }
 
     /// Creates a platform-side INR order. Derive amount from a server-side plan/course record.
+    pub fn from_credentials(
+        client: reqwest::Client,
+        key_id: String,
+        key_secret: String,
+    ) -> AppResult<Self> {
+        if key_id.trim().is_empty() || key_secret.trim().is_empty() {
+            return Err(AppError::ServiceUnavailable("Razorpay credentials"));
+        }
+        Ok(Self {
+            client,
+            key_id,
+            key_secret,
+        })
+    }
+
+    pub async fn get_payment(&self, payment_id: &str) -> AppResult<RazorpayPayment> {
+        if payment_id.is_empty()
+            || payment_id.len() > 80
+            || !payment_id
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || "-_".contains(ch))
+        {
+            return Err(AppError::BadRequest("invalid Razorpay payment ID"));
+        }
+
+        let response = self
+            .client
+            .get(format!("https://api.razorpay.com/v1/payments/{payment_id}"))
+            .basic_auth(&self.key_id, Some(&self.key_secret))
+            .send()
+            .await?
+            .error_for_status()?;
+
+        Ok(response.json::<RazorpayPayment>().await?)
+    }
+
     pub async fn create_inr_order(
         &self,
         amount_in_paise: i64,

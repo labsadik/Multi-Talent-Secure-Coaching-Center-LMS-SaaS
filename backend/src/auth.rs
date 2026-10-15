@@ -119,6 +119,15 @@ pub struct RegisterRequest {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RegisterLearnerRequest {
+    pub company_slug: String,
+    pub name: String,
+    pub email: String,
+    pub password: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LoginRequest {
     pub company_slug: String,
     pub email: String,
@@ -237,6 +246,81 @@ pub async fn register(
             company: PublicCompany {
                 id: company_id.to_hex(),
                 name: company_name,
+                slug: company_slug,
+            },
+        }),
+    ))
+}
+
+pub async fn register_learner(
+    State(state): State<AppState>,
+    Json(input): Json<RegisterLearnerRequest>,
+) -> AppResult<(axum::http::StatusCode, Json<AuthResponse>)> {
+    let company_slug = input.company_slug.trim().to_ascii_lowercase();
+    let name = input.name.trim().to_owned();
+    let email = input.email.trim().to_ascii_lowercase();
+
+    if !valid_slug(&company_slug)
+        || !(2..=80).contains(&name.chars().count())
+        || !valid_email(&email)
+        || !(12..=128).contains(&input.password.chars().count())
+    {
+        return Err(AppError::BadRequest(
+            "company slug, name, email, or password does not meet validation rules",
+        ));
+    }
+
+    let company = state
+        .db
+        .collection::<mongodb::bson::Document>("companies")
+        .find_one(doc! { "slug": &company_slug, "status": "active" })
+        .await?
+        .ok_or(AppError::NotFound)?;
+
+    if !company.get_bool("studentRegistrationEnabled").unwrap_or(true) {
+        return Err(AppError::Forbidden);
+    }
+    let company_id = company
+        .get_object_id("_id")
+        .map_err(|_| AppError::Internal)?
+        .to_owned();
+    let user_id = ObjectId::new();
+    let now = DateTime::now();
+    let password_hash = hash_password(&input.password)?;
+
+    state
+        .db
+        .collection::<mongodb::bson::Document>("users")
+        .insert_one(doc! {
+            "_id": user_id.clone(),
+            "companyId": company_id.clone(),
+            "name": &name,
+            "email": &email,
+            "passwordHash": &password_hash,
+            "role": "learner",
+            "status": "active",
+            "createdAt": now,
+            "updatedAt": now,
+        })
+        .await
+        .map_err(AppError::from_mongo)?;
+
+    let token = issue_access_token(&state, &user_id, &company_id, "learner")?;
+    Ok((
+        axum::http::StatusCode::CREATED,
+        Json(AuthResponse {
+            access_token: token,
+            token_type: "Bearer",
+            expires_in: state.settings.jwt_ttl_seconds,
+            user: PublicUser {
+                id: user_id.to_hex(),
+                name,
+                email,
+                role: "learner".to_owned(),
+            },
+            company: PublicCompany {
+                id: company_id.to_hex(),
+                name: company.get_str("name").unwrap_or_default().to_owned(),
                 slug: company_slug,
             },
         }),

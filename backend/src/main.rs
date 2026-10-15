@@ -7,6 +7,7 @@ mod error;
 mod health;
 mod integrations;
 mod media;
+mod payments;
 mod learning;
 mod routes;
 mod security;

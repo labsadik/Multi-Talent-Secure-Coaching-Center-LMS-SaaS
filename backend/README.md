@@ -7,9 +7,10 @@ This is the Rust backend foundation for the multi-tenant Newage LMS SaaS. The Nu
 - Axum/Tokio HTTP server with graceful shutdown, structured JSON logs, security headers, exact-origin CORS, and request body limits.
 - Centralized configuration loaded from environment variables and a local .env via dotenvy. Process environment variables take precedence.
 - MongoDB connection pooling and unique indexes for company slugs, company-scoped users, and company-scoped course slugs.
-- Company registration, password hashing with Argon2, tenant-scoped login, short-lived JWT access tokens with issuer/audience validation, and /auth/me.
+- Company-owner and learner registration, password hashing with Argon2, tenant-scoped login, short-lived JWT access tokens with issuer/audience validation, and /auth/me.
 - Tenant-aware course creation/listing and course publishing. Learners only discover published courses; all course queries are filtered by the authenticated user's company ID.
 - Subject → Topic → Lesson APIs with tenant-scoped parent checks, content validation, ordering, and media-asset ownership checks for video/file lessons.
+- Tenant Razorpay credentials stored only as AES-256-GCM encrypted values, course order creation using server-side course prices, checkout signature + captured-payment verification, idempotent enrollment writes, and a signature-verified `payment.captured` webhook.
 - Bunny Storage topic-scoped image/PDF uploads, Bunny Stream per-course collection provisioning and time-limited TUS upload tickets, video encoding status sync, Razorpay platform order helper, and AES-256-GCM utility for tenant secrets.
 - CI checks for formatting, Clippy, tests, and compilation.
 
@@ -31,6 +32,8 @@ All runtime configuration is read from environment variables; a local .env is lo
 Required: APP_ENV, MONGODB_URI, MONGODB_DATABASE, JWT_SECRET, JWT_ISSUER, JWT_AUDIENCE, and CORS_ALLOWED_ORIGINS.
 
 Optional upload settings: `MAX_ASSET_UPLOAD_BYTES`, `BUNNY_TUS_ENDPOINT`, and `BUNNY_UPLOAD_SIGNATURE_TTL_SECONDS`. Direct browser video uploads use a short-lived TUS signature; the Bunny API key never leaves the server. Storage file uploads are streamed through the API and bounded by both request and asset size caps.
+
+A company’s Razorpay key ID, API secret, and webhook secret are submitted through its authenticated settings endpoint. Only encrypted API/webhook secrets are stored in MongoDB; `APP_ENCRYPTION_KEY_BASE64` is required to enable this and must be managed as a durable secret with a rotation/backup plan.
 
 Optional provider configuration must be supplied in matching pairs:
 - Bunny Storage: BUNNY_STORAGE_ZONE + BUNNY_STORAGE_API_KEY

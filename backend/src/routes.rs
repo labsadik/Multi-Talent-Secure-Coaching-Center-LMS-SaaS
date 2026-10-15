@@ -5,7 +5,7 @@ use axum::{
 };
 use serde_json::{json, Value};
 
-use crate::{auth, courses, health, learning, media, state::AppState};
+use crate::{auth, courses, health, learning, media, payments, state::AppState};
 
 pub fn router(state: AppState) -> Router {
     Router::new()
@@ -13,6 +13,7 @@ pub fn router(state: AppState) -> Router {
         .route("/health/live", get(health::live))
         .route("/health/ready", get(health::ready))
         .route("/api/v1/auth/register", post(auth::register))
+        .route("/api/v1/auth/register-learner", post(auth::register_learner))
         .route("/api/v1/auth/login", post(auth::login))
         .route("/api/v1/auth/me", get(auth::me))
         .route(
@@ -46,6 +47,22 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/v1/assets/{asset_id}/refresh-status",
             post(media::refresh_video_status),
+        )
+        .route(
+            "/api/v1/company/integrations/razorpay",
+            get(payments::get_razorpay_settings).put(payments::configure_razorpay),
+        )
+        .route(
+            "/api/v1/courses/{course_id}/orders",
+            post(payments::create_course_order),
+        )
+        .route(
+            "/api/v1/payments/verify",
+            post(payments::verify_course_payment),
+        )
+        .route(
+            "/api/v1/webhooks/razorpay",
+            post(payments::razorpay_webhook),
         )
         .fallback(not_found)
         .with_state(state)
