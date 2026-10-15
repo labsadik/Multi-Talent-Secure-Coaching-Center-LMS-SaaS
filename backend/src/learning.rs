@@ -465,7 +465,3 @@ pub async fn create_lesson(
     Ok((StatusCode::CREATED, Json(content_response(document)?)))
 }
 
-#[allow(dead_code)]
-fn _sample_shape() -> Value {
-    json!({ "resource": "learning" })
-}
