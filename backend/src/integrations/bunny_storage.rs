@@ -193,3 +193,45 @@ fn valid_path_segment(value: &str) -> bool {
             .chars()
             .all(|ch| ch.is_ascii_alphanumeric() || "-_.".contains(ch))
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::BunnyStorage;
+
+    #[test]
+    fn lesson_storage_path_contains_company_and_curriculum_hierarchy() {
+        let path = BunnyStorage::course_content_path(
+            "company123",
+            "acme",
+            "course123",
+            "foundations",
+            "subject123",
+            "math",
+            "part123",
+            "algebra",
+            Some(("chapter123", "equations")),
+            Some(("chapterpart123", "worked-examples")),
+            Some(("lesson123", "linear-equations")),
+            "assets",
+            "asset123.pdf",
+        )
+        .expect("valid hierarchy should create a path");
+
+        assert_eq!(
+            path,
+            "companies/company123-acme/courses/course123-foundations/subjects/subject123-math/parts/part123-algebra/chapters/chapter123-equations/chapter-parts/chapterpart123-worked-examples/lessons/lesson123-linear-equations/assets/asset123.pdf"
+        );
+    }
+
+    #[test]
+    fn lesson_path_requires_a_chapter_part_parent() {
+        let result = BunnyStorage::course_content_path(
+            "company123", "acme", "course123", "foundations",
+            "subject123", "math", "part123", "algebra",
+            None, None, Some(("lesson123", "linear-equations")),
+            "assets", "asset123.pdf",
+        );
+        assert!(result.is_err());
+    }
+}
