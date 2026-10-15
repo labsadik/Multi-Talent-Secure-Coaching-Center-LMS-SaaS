@@ -97,7 +97,7 @@ pub async fn ensure_indexes(db: &Database) -> mongodb::error::Result<()> {
                 IndexOptions::builder()
                     .name("active_subject_slug_unique".to_owned())
                     .unique(true)
-                    .partial_filter_expression(doc! { "deletedAt": { "$exists": false } })
+                    .partial_filter_expression(doc! { "status": "active" })
                     .build(),
             )
             .build(),
