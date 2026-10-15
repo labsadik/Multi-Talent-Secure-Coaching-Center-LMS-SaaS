@@ -201,6 +201,16 @@ http 204 "$BASE_URL/api/v1/lessons/$lesson_id" -X DELETE -H "Authorization: Bear
 http 200 "$BASE_URL/api/v1/topics/$topic_id/lessons" -H "Authorization: Bearer $token_a"
 assert_json "$TMP_DIR/body" 'length == 0' "archived lesson is still listed"
 
+# A company owner can brand/publish a tenant-scoped storefront with its published course catalogue.
+payload="$(jq -n --arg display "Smoke Test Public Academy" --arg headline "Learn with Smoke Academy" --arg email "contact-$suffix@example.test" '{displayName:$display,headline:$headline,tagline:"Learn at your pace",about:"Public company page smoke test",theme:"ocean",brandColor:"#2563eb",accentColor:"#14b8a6",logoUrl:null,heroImageUrl:null,contactEmail:$email,isPublished:true}')"
+http 200 "$BASE_URL/api/v1/company/site" -X PUT -H "Authorization: Bearer $token_a" -H 'Content-Type: application/json' --data "$payload"
+cp "$TMP_DIR/body" "$TMP_DIR/site-saved.json"
+jq -e --arg path "/p/$slug_a" '.site.isPublished == true and .site.displayName == "Smoke Test Public Academy" and .publicPath == $path' "$TMP_DIR/site-saved.json" >/dev/null || fail "company public site configuration did not persist"
+http 200 "$BASE_URL/api/v1/public/companies/$slug_a"
+cp "$TMP_DIR/body" "$TMP_DIR/public-company.json"
+jq -e --arg slug "$slug_a" --arg course "$course_id" '.site.isPublished == true and .company.slug == $slug and any(.courses[]; .id == $course)' "$TMP_DIR/public-company.json" >/dev/null || fail "public company page did not return the published course"
+http 404 "$BASE_URL/api/v1/public/companies/unknown-company-$suffix"
+
 # Subject archival cascades to active nested topics, lessons, and asset metadata.
 http 204 "$BASE_URL/api/v1/subjects/$subject_id" -X DELETE -H "Authorization: Bearer $token_a"
 http 200 "$BASE_URL/api/v1/courses/$course_id/subjects" -H "Authorization: Bearer $token_a"
@@ -212,16 +222,6 @@ http 200 "$BASE_URL/api/v1/courses" -H "Authorization: Bearer $token_a"
 if jq -e --arg id "$course_id" 'any(.[]; .id == $id)' "$TMP_DIR/body" >/dev/null; then
   fail "archived course still appears in the course listing"
 fi
-
-# A company owner can brand/publish a tenant-scoped storefront with its published course catalogue.
-payload="$(jq -n --arg display "Smoke Test Public Academy" --arg headline "Learn with Smoke Academy" --arg email "contact-$suffix@example.test" '{displayName:$display,headline:$headline,tagline:"Learn at your pace",about:"Public company page smoke test",theme:"ocean",brandColor:"#2563eb",accentColor:"#14b8a6",logoUrl:null,heroImageUrl:null,contactEmail:$email,isPublished:true}')"
-http 200 "$BASE_URL/api/v1/company/site" -X PUT -H "Authorization: Bearer $token_a" -H 'Content-Type: application/json' --data "$payload"
-cp "$TMP_DIR/body" "$TMP_DIR/site-saved.json"
-jq -e --arg path "/p/$slug_a" '.site.isPublished == true and .site.displayName == "Smoke Test Public Academy" and .publicPath == $path' "$TMP_DIR/site-saved.json" >/dev/null || fail "company public site configuration did not persist"
-http 200 "$BASE_URL/api/v1/public/companies/$slug_a"
-cp "$TMP_DIR/body" "$TMP_DIR/public-company.json"
-jq -e --arg slug "$slug_a" --arg course "$course_id" '.site.isPublished == true and .company.slug == $slug and any(.courses[]; .id == $course)' "$TMP_DIR/public-company.json" >/dev/null || fail "public company page did not return the published course"
-http 404 "$BASE_URL/api/v1/public/companies/unknown-company-$suffix"
 
 payload="$(jq -n --arg slug "$slug_a" --arg email "$learner_email" --arg password "$password" '{companySlug:$slug,name:"Smoke Test Learner",email:$email,password:$password}')"
 http 201 "$BASE_URL/api/v1/auth/register-learner" -H 'Content-Type: application/json' --data "$payload"
