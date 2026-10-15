@@ -1,6 +1,6 @@
 use anyhow::{ensure, Context, Result};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use std::env;
+use std::{collections::HashMap, env};
 
 #[derive(Clone)]
 pub struct Settings {
@@ -32,6 +32,10 @@ pub struct Settings {
     pub razorpay_key_id: Option<String>,
     pub razorpay_key_secret: Option<String>,
     pub razorpay_webhook_secret: Option<String>,
+    pub slack_client_id: Option<String>,
+    pub slack_client_secret: Option<String>,
+    pub slack_redirect_uri: Option<String>,
+    pub slack_company_workspaces: HashMap<String, String>,
     pub plan_starter_monthly_price_paise: i64,
     pub plan_pro_monthly_price_paise: i64,
     pub plan_business_monthly_price_paise: i64,
@@ -242,6 +246,52 @@ impl Settings {
             "RAZORPAY_WEBHOOK_SECRET requires platform Razorpay credentials"
         );
 
+        // Slack sign-in is optional. Workspace-to-company bindings stay in environment
+        // configuration so enabling SSO does not require a MongoDB schema change.
+        let slack_client_id = optional("SLACK_CLIENT_ID");
+        let slack_client_secret = optional("SLACK_CLIENT_SECRET");
+        let slack_redirect_uri = optional("SLACK_REDIRECT_URI");
+        let has_slack_oauth = slack_client_id.is_some()
+            && slack_client_secret.is_some()
+            && slack_redirect_uri.is_some();
+        let no_slack_oauth = slack_client_id.is_none()
+            && slack_client_secret.is_none()
+            && slack_redirect_uri.is_none();
+        ensure!(
+            has_slack_oauth || no_slack_oauth,
+            "SLACK_CLIENT_ID, SLACK_CLIENT_SECRET, and SLACK_REDIRECT_URI must be configured together"
+        );
+        if let Some(uri) = &slack_redirect_uri {
+            ensure!(
+                uri.starts_with("https://") || (app_env != "production" && uri.starts_with("http://localhost:")),
+                "SLACK_REDIRECT_URI must use HTTPS (HTTP localhost is allowed in development)"
+            );
+            ensure!(!uri.chars().any(char::is_whitespace), "SLACK_REDIRECT_URI contains whitespace");
+        }
+
+        let slack_company_workspaces: HashMap<String, String> =
+            match optional("SLACK_COMPANY_WORKSPACES_JSON") {
+                Some(raw) => serde_json::from_str(&raw)
+                    .context("SLACK_COMPANY_WORKSPACES_JSON must be a JSON object mapping company slugs to Slack team IDs")?,
+                None => HashMap::new(),
+            };
+        for (company_slug, team_id) in &slack_company_workspaces {
+            ensure!(
+                crate::auth::valid_slug(company_slug),
+                "SLACK_COMPANY_WORKSPACES_JSON contains an invalid company slug"
+            );
+            ensure!(
+                team_id.starts_with('T')
+                    && team_id.len() >= 2
+                    && team_id.chars().all(|ch| ch.is_ascii_alphanumeric()),
+                "SLACK_COMPANY_WORKSPACES_JSON values must be Slack workspace team IDs"
+            );
+        }
+        ensure!(
+            slack_company_workspaces.is_empty() || has_slack_oauth,
+            "Slack workspace mappings require all three Slack OAuth settings"
+        );
+
         let plan_starter_monthly_price_paise =
             parse_or("PLAN_STARTER_MONTHLY_PRICE_PAISE", 99_900_i64)?;
         let plan_pro_monthly_price_paise =
@@ -326,6 +376,10 @@ impl Settings {
             razorpay_key_id,
             razorpay_key_secret,
             razorpay_webhook_secret,
+            slack_client_id,
+            slack_client_secret,
+            slack_redirect_uri,
+            slack_company_workspaces,
             plan_starter_monthly_price_paise,
             plan_pro_monthly_price_paise,
             plan_business_monthly_price_paise,
