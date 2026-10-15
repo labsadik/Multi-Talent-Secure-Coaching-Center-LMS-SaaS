@@ -68,6 +68,26 @@ pub fn router(state: AppState) -> Router {
             get(learning::list_lessons).post(learning::create_lesson),
         )
         .route(
+            "/api/v1/topics/{topic_id}/chapters",
+            get(learning::list_chapters).post(learning::create_chapter),
+        )
+        .route(
+            "/api/v1/chapters/{chapter_id}",
+            patch(learning::update_chapter).delete(learning::delete_chapter),
+        )
+        .route(
+            "/api/v1/chapters/{chapter_id}/parts",
+            get(learning::list_chapter_parts).post(learning::create_chapter_part),
+        )
+        .route(
+            "/api/v1/chapter-parts/{part_id}",
+            patch(learning::update_chapter_part).delete(learning::delete_chapter_part),
+        )
+        .route(
+            "/api/v1/chapter-parts/{part_id}/lessons",
+            get(learning::list_chapter_part_lessons).post(learning::create_chapter_part_lesson),
+        )
+        .route(
             "/api/v1/lessons/{lesson_id}",
             patch(learning::update_lesson).delete(learning::delete_lesson),
         )
