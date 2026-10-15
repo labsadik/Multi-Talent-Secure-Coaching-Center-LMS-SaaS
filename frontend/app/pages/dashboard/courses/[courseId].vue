@@ -124,6 +124,10 @@ function availableAssets(chapter: ChapterView) {
 function selectedLessonAsset(chapter: ChapterView) {
   return chapter.assets.find(asset => asset.id === lessonAssetId.value)
 }
+function selectedLessonStatusLabel(chapter: ChapterView) {
+  const asset = selectedLessonAsset(chapter)
+  return asset ? statusLabel(asset) : ''
+}
 function lessonMediaDisplayName(file: File) {
   const extension = file.name.includes('.') ? file.name.slice(file.name.lastIndexOf('.')) : ''
   return (lessonTitle.value.trim() || file.name.replace(/\.[^.]+$/, '')) + extension
@@ -658,7 +662,7 @@ onMounted(async () => {
                         <div class="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-slate-100 text-xs font-bold">{{ selectedLessonAsset(chapter)?.assetType === 'video' ? '▶' : selectedLessonAsset(chapter)?.assetType === 'file' ? 'PDF' : 'IMG' }}</div>
                         <div class="min-w-0 flex-1">
                           <p class="break-words text-sm font-semibold">{{ selectedLessonAsset(chapter)?.title }}</p>
-                          <p class="mt-1 text-xs text-slate-500">{{ selectedLessonAsset(chapter)?.provider === 'bunny_stream' ? 'Bunny Stream' : 'Bunny Storage' }} · {{ statusLabel(selectedLessonAsset(chapter)!) }}</p>
+                          <p class="mt-1 text-xs text-slate-500">{{ selectedLessonAsset(chapter)?.provider === 'bunny_stream' ? 'Bunny Stream' : 'Bunny Storage' }} · {{ selectedLessonStatusLabel(chapter) }}</p>
                           <div v-if="selectedLessonAsset(chapter)?.assetType === 'video' && ['uploading', 'processing'].includes(selectedLessonAsset(chapter)?.status || '')" class="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100"><div class="h-full rounded-full bg-violet-600 transition-all" :style="{ width: (selectedLessonAsset(chapter)?.status === 'processing' ? (selectedLessonAsset(chapter)?.encodeProgress ?? 5) : 5) + '%' }" /></div>
                           <p v-if="selectedLessonAsset(chapter)?.assetType === 'video' && selectedLessonAsset(chapter)?.status !== 'ready'" class="mt-1 text-xs text-violet-700">The lesson can be saved now. Students can play the video after Bunny marks it Ready.</p>
                         </div>
