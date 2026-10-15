@@ -89,8 +89,24 @@ impl BunnyStorage {
         Ok(bytes)
     }
 
-    /// Builds a folder-style path from trusted IDs and validated slugs.
-    pub fn course_topic_path(
+    /// Deletes an object from the configured storage zone. Server-only; AccessKey is never exposed.
+    pub async fn delete_object(&self, relative_path: &str) -> AppResult<()> {
+        if !valid_relative_path(relative_path) {
+            return Err(AppError::BadRequest("invalid storage path"));
+        }
+        let url = format!("https://{}/{}/{}", self.host, self.zone, relative_path);
+        self.client
+            .delete(url)
+            .header("AccessKey", &self.api_key)
+            .send()
+            .await?
+            .error_for_status()?;
+        Ok(())
+    }
+
+    /// Builds a tenant-scoped storage path with optional chapter, chapter-part and lesson folders.
+    /// IDs provide stable isolation; slugs make the Bunny Storage zone easy to browse.
+    pub fn course_content_path(
         company_id: &str,
         company_slug: &str,
         course_id: &str,
@@ -99,10 +115,13 @@ impl BunnyStorage {
         subject_slug: &str,
         topic_id: &str,
         topic_slug: &str,
+        chapter: Option<(&str, &str)>,
+        chapter_part: Option<(&str, &str)>,
+        lesson: Option<(&str, &str)>,
         category: &str,
         filename: &str,
     ) -> AppResult<String> {
-        let parts = [
+        let base_parts = [
             company_id,
             company_slug,
             course_id,
@@ -114,23 +133,46 @@ impl BunnyStorage {
             category,
             filename,
         ];
-        if !parts.iter().all(|part| valid_path_segment(part)) {
-            return Err(AppError::BadRequest("invalid media path segment"));
+        if !base_parts.iter().all(|part| valid_path_segment(part)) {
+            return Err(AppError::BadRequest("invalid storage path segment"));
+        }
+        if chapter_part.is_some() && chapter.is_none() {
+            return Err(AppError::BadRequest("chapter-part folder requires a chapter"));
+        }
+        if lesson.is_some() && chapter_part.is_none() {
+            return Err(AppError::BadRequest("lesson folder requires a chapter part"));
         }
 
-        Ok(format!(
-            "companies/{}-{}/courses/{}-{}/subjects/{}-{}/topics/{}-{}/{}/{}",
-            company_id,
-            company_slug,
-            course_id,
-            course_slug,
-            subject_id,
-            subject_slug,
-            topic_id,
-            topic_slug,
-            category,
-            filename
-        ))
+        let mut path = format!(
+            "companies/{}-{}/courses/{}-{}/subjects/{}-{}/parts/{}-{}/",
+            company_id, company_slug, course_id, course_slug,
+            subject_id, subject_slug, topic_id, topic_slug
+        );
+        if let Some((id, slug)) = chapter {
+            if !valid_path_segment(id) || !valid_path_segment(slug) {
+                return Err(AppError::BadRequest("invalid chapter path segment"));
+            }
+            path.push_str(&format!("chapters/{}-{}/", id, slug));
+        }
+        if let Some((id, slug)) = chapter_part {
+            if !valid_path_segment(id) || !valid_path_segment(slug) {
+                return Err(AppError::BadRequest("invalid chapter-part path segment"));
+            }
+            path.push_str(&format!("chapter-parts/{}-{}/", id, slug));
+        }
+        if let Some((id, slug)) = lesson {
+            if !valid_path_segment(id) || !valid_path_segment(slug) {
+                return Err(AppError::BadRequest("invalid lesson path segment"));
+            }
+            path.push_str(&format!("lessons/{}-{}/", id, slug));
+        }
+        path.push_str(category);
+        path.push('/');
+        path.push_str(filename);
+        if !valid_relative_path(&path) {
+            return Err(AppError::BadRequest("invalid storage path"));
+        }
+        Ok(path)
     }
 }
 
