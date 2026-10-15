@@ -29,12 +29,23 @@ function clearSessionCookies(event: H3Event) {
   deleteCookie(event, ACCESS_COOKIE, options)
   deleteCookie(event, REFRESH_COOKIE, options)
 }
-function passThroughError(error: unknown) {
+function passThroughError(error: unknown, baseURL = 'http://127.0.0.1:8080') {
   const value = error as ApiError | null
-  const statusCode = typeof value?.statusCode === 'number' ? value.statusCode : typeof value?.status === 'number' ? value.status : 502
+  const rawMessage = typeof value?.message === 'string' ? value.message : ''
+  const cannotConnect = /fetch failed|failed to fetch|ECONNREFUSED|ECONNRESET|ENOTFOUND|ETIMEDOUT|EHOSTUNREACH/i.test(rawMessage)
+  const statusCode = cannotConnect
+    ? 503
+    : typeof value?.statusCode === 'number'
+      ? value.statusCode
+      : typeof value?.status === 'number'
+        ? value.status
+        : 502
   const data = value?.data
   const message = data && typeof data === 'object' && 'error' in data ? (data as { error?: { message?: string } }).error?.message : undefined
-  return createError({ statusCode, statusMessage: message || value?.statusMessage || value?.message || 'The API request failed', data })
+  const statusMessage = cannotConnect
+    ? 'Cannot connect to the Newage API at ' + baseURL + '. Start the Rust backend and confirm that /health/live returns 200, then retry.'
+    : message || value?.statusMessage || value?.message || 'The API request failed'
+  return createError({ statusCode, statusMessage, data })
 }
 export function assertSameOrigin(event: H3Event) {
   const origin = getRequestHeader(event, 'origin')
@@ -49,7 +60,7 @@ export async function startSession(event: H3Event, action: 'login' | 'register' 
     const session = await $fetch<AuthResponse>('/api/v1/auth/' + action, { baseURL: apiBase(event), method: 'POST', body: body as Record<string, unknown> })
     setSessionCookies(event, session)
     return publicSession(session)
-  } catch (error) { throw passThroughError(error) }
+  } catch (error) { throw passThroughError(error, apiBase(event)) }
 }
 async function refreshAccessToken(event: H3Event) {
   const refreshToken = getCookie(event, REFRESH_COOKIE)
@@ -66,17 +77,23 @@ async function refreshAccessToken(event: H3Event) {
     // Expired/revoked credentials should be cleared, but transient API/database errors
     // must not destroy a valid refresh session.
     if (status === 401 || status === 403) clearSessionCookies(event)
-    throw passThroughError(error)
+    throw passThroughError(error, apiBase(event))
   }
 }
 async function performBackendRequest(event: H3Event, path: string, init: RequestInit = {}) {
   let accessToken = getCookie(event, ACCESS_COOKIE)
   if (!accessToken) accessToken = await refreshAccessToken(event)
-  const sendRequest = (token: string) => fetch(apiBase(event) + path, {
-    ...init,
-    headers: { Accept: 'application/json', ...(init.headers || {}), Authorization: 'Bearer ' + token },
-    redirect: 'manual',
-  })
+  const sendRequest = async (token: string) => {
+    try {
+      return await fetch(apiBase(event) + path, {
+        ...init,
+        headers: { Accept: 'application/json', ...(init.headers || {}), Authorization: 'Bearer ' + token },
+        redirect: 'manual',
+      })
+    } catch (error) {
+      throw passThroughError(error, apiBase(event))
+    }
+  }
   let response = await sendRequest(accessToken)
   if (response.status === 401 && getCookie(event, REFRESH_COOKIE)) {
     try {
