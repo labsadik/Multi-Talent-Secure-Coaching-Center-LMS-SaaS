@@ -12,6 +12,7 @@ import type {
   LoginInput,
   PlaybackInfo,
   RegisterInput,
+  TopicAsset,
 } from '~/types/api'
 
 interface MeResponse { user: AuthUser; company: AuthCompany }
@@ -83,16 +84,44 @@ export function useAuth() {
   async function deleteTopic(topicId: string) {
     return backend<void>('topics/' + encodeURIComponent(topicId), { method: 'DELETE' })
   }
+  async function getChapters(topicId: string) { return backend<ContentItem[]>('topics/' + encodeURIComponent(topicId) + '/chapters') }
+  async function createChapter(topicId: string, input: { title: string; slug: string; description?: string; sortOrder?: number }) {
+    return backend<ContentItem>('topics/' + encodeURIComponent(topicId) + '/chapters', { method: 'POST', body: input })
+  }
+  async function updateChapter(chapterId: string, input: { title: string; slug: string; description?: string; sortOrder?: number }) {
+    return backend<ContentItem>('chapters/' + encodeURIComponent(chapterId), { method: 'PATCH', body: input })
+  }
+  async function deleteChapter(chapterId: string) {
+    return backend<void>('chapters/' + encodeURIComponent(chapterId), { method: 'DELETE' })
+  }
+  async function getChapterParts(chapterId: string) { return backend<ContentItem[]>('chapters/' + encodeURIComponent(chapterId) + '/parts') }
+  async function createChapterPart(chapterId: string, input: { title: string; slug: string; description?: string; sortOrder?: number }) {
+    return backend<ContentItem>('chapters/' + encodeURIComponent(chapterId) + '/parts', { method: 'POST', body: input })
+  }
+  async function updateChapterPart(partId: string, input: { title: string; slug: string; description?: string; sortOrder?: number }) {
+    return backend<ContentItem>('chapter-parts/' + encodeURIComponent(partId), { method: 'PATCH', body: input })
+  }
+  async function deleteChapterPart(partId: string) {
+    return backend<void>('chapter-parts/' + encodeURIComponent(partId), { method: 'DELETE' })
+  }
+  async function getChapterPartLessons(partId: string) { return backend<ContentItem[]>('chapter-parts/' + encodeURIComponent(partId) + '/lessons') }
+  async function createChapterPartLesson(partId: string, input: {
+    title: string; slug: string; lessonType: string; content?: string; mediaAssetId?: string
+    durationSeconds?: number; isPreview?: boolean; sortOrder?: number; thumbnailUrl?: string
+  }) {
+    return backend<ContentItem>('chapter-parts/' + encodeURIComponent(partId) + '/lessons', { method: 'POST', body: input })
+  }
   async function getLessons(topicId: string) { return backend<ContentItem[]>('topics/' + encodeURIComponent(topicId) + '/lessons') }
   async function createLesson(topicId: string, input: {
     title: string; slug: string; lessonType: string; content?: string; mediaAssetId?: string
-    durationSeconds?: number; isPreview?: boolean; sortOrder?: number
+    durationSeconds?: number; isPreview?: boolean; sortOrder?: number; thumbnailUrl?: string
   }) {
     return backend<ContentItem>('topics/' + encodeURIComponent(topicId) + '/lessons', { method: 'POST', body: input })
   }
   async function updateLesson(lessonId: string, input: {
     title: string; slug: string; lessonType: string; content?: string; mediaAssetId?: string
-    durationSeconds?: number; isPreview?: boolean; sortOrder?: number
+    durationSeconds?: number; isPreview?: boolean; sortOrder?: number; thumbnailUrl?: string
+    chapterId?: string; chapterPartId?: string
   }) {
     return backend<ContentItem>('lessons/' + encodeURIComponent(lessonId), { method: 'PATCH', body: input })
   }
@@ -114,6 +143,9 @@ export function useAuth() {
   }
   async function getCourseProgress(courseId: string) { return backend<CourseProgress>('courses/' + encodeURIComponent(courseId) + '/my-progress') }
   async function getPlayback(lessonId: string) { return backend<PlaybackInfo>('lessons/' + encodeURIComponent(lessonId) + '/playback') }
+  async function getTopicAssets(topicId: string) {
+    return backend<TopicAsset[]>('topics/' + encodeURIComponent(topicId) + '/assets')
+  }
   async function uploadAsset(topicId: string, file: File) {
     return backend<Record<string, unknown>>('topics/' + encodeURIComponent(topicId) + '/assets', {
       method: 'PUT', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: await file.arrayBuffer(),
@@ -153,6 +185,9 @@ export function useAuth() {
     getSubjects, createSubject, updateSubject, deleteSubject,
     getTopics, createTopic, updateTopic, deleteTopic,
     getLessons, createLesson, updateLesson, deleteLesson,
+    getChapters, createChapter, updateChapter, deleteChapter,
+    getChapterParts, createChapterPart, updateChapterPart, deleteChapterPart,
+    getChapterPartLessons, createChapterPartLesson, getTopicAssets,
     getCompanyUsers, createCompanyUser, updateCompanyUser, getMyCourses, updateLessonProgress, getCourseProgress, getPlayback,
     uploadAsset, createVideoTicket, refreshAssetStatus, getRazorpaySettings, configureRazorpay, createCourseOrder,
     verifyCoursePayment, createSubscriptionOrder, logout, clearSession,
