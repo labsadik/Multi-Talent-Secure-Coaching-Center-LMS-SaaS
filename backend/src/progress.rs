@@ -1,6 +1,5 @@
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
     Json,
 };
 use futures_util::TryStreamExt;
@@ -56,7 +55,7 @@ pub async fn my_courses(
         return Err(AppError::Forbidden);
     }
 
-    let mut cursor = state
+    let cursor = state
         .db
         .collection::<Document>("enrollments")
         .find(doc! {
@@ -179,7 +178,7 @@ pub async fn update_lesson_progress(
     };
 
     let now = DateTime::now();
-    let set_fields = doc! {
+    let mut set_fields = doc! {
         "status": status,
         "positionSeconds": position,
         "lastViewedAt": now,
