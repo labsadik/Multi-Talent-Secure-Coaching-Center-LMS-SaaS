@@ -46,6 +46,7 @@ const editingSubjectId = ref('')
 const subjectTitle = ref('')
 const subjectSlug = ref('')
 const subjectSlugTouched = ref(false)
+const expandedSubjectId = ref('')
 const expandedChapterId = ref('')
 const chapterFormSubjectId = ref('')
 const editingChapterId = ref('')
@@ -60,6 +61,7 @@ const lessonSlug = ref('')
 const lessonSlugTouched = ref(false)
 const lessonType = ref<'text' | 'video' | 'file'>('text')
 const lessonContent = ref('')
+const lessonThumbnailUrl = ref('')
 const lessonAssetId = ref('')
 const lessonDuration = ref(0)
 const lessonPreview = ref(false)
@@ -126,6 +128,7 @@ function resetLessonForm() {
   lessonSlugTouched.value = false
   lessonType.value = 'text'
   lessonContent.value = ''
+  lessonThumbnailUrl.value = ''
   lessonAssetId.value = ''
   lessonDuration.value = 0
   lessonPreview.value = false
@@ -160,6 +163,7 @@ function editLesson(chapter: ChapterView, lesson: ContentItem) {
   lessonSlugTouched.value = true
   lessonType.value = (lesson.lessonType || 'text') as 'text' | 'video' | 'file'
   lessonContent.value = lesson.content || ''
+  lessonThumbnailUrl.value = lesson.thumbnailUrl || ''
   lessonAssetId.value = lesson.mediaAssetId || ''
   lessonDuration.value = Math.ceil(Number(lesson.durationSeconds || 0) / 60)
   lessonPreview.value = Boolean(lesson.isPreview)
@@ -213,6 +217,9 @@ async function loadOutline(showLoading = true) {
       }))
       return { ...subject, chapters }
     }))
+    if (!expandedSubjectId.value || !subjects.value.some(subject => subject.id === expandedSubjectId.value)) {
+      expandedSubjectId.value = subjects.value[0]?.id || ''
+    }
     if (!expandedChapterId.value || !subjects.value.some(subject => subject.chapters.some(chapter => chapter.id === expandedChapterId.value))) {
       expandedChapterId.value = subjects.value[0]?.chapters[0]?.id || ''
     }
@@ -300,6 +307,7 @@ async function saveLesson(chapter: ChapterView) {
       slug: lessonSlug.value.trim().toLowerCase(),
       lessonType: lessonType.value,
       content: lessonType.value === 'text' ? lessonContent.value.trim() : undefined,
+      thumbnailUrl: lessonThumbnailUrl.value.trim() || undefined,
       mediaAssetId: lessonType.value === 'text' ? undefined : lessonAssetId.value || undefined,
       durationSeconds: Math.max(0, Math.round(Number(lessonDuration.value || 0) * 60)),
       isPreview: lessonPreview.value,
@@ -514,13 +522,16 @@ onMounted(async () => {
 
         <div v-if="subjects.length" class="space-y-4">
           <section v-for="(subject, subjectIndex) in subjects" :key="subject.id" class="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-            <div class="flex flex-wrap items-start gap-3 border-b border-slate-100 p-4 sm:p-5">
-              <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-blue-50 text-sm font-bold text-blue-800">{{ subjectIndex + 1 }}</span>
-              <div class="min-w-0 flex-1"><h3 class="text-base font-semibold">{{ subject.title }}</h3><p class="mt-1 text-xs text-slate-500">{{ subject.chapters.length }} chapters · {{ subject.chapters.reduce((sum, chapter) => sum + chapter.lessons.length, 0) }} lessons</p></div>
-              <div v-if="isManager" class="flex gap-2"><button type="button" class="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700" @click="editSubject(subject)">Edit</button><button type="button" class="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700" @click="removeSubject(subject)">Archive</button></div>
+            <div class="flex items-center gap-3 border-b border-slate-100 p-4 sm:p-5">
+              <button type="button" class="flex min-w-0 flex-1 items-center gap-3 text-left" :aria-expanded="expandedSubjectId === subject.id" @click="expandedSubjectId = expandedSubjectId === subject.id ? '' : subject.id">
+                <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-amber-50 text-amber-800 ring-1 ring-amber-100"><svg viewBox="0 0 24 24" fill="none" class="h-5 w-5" aria-hidden="true"><path d="M3.5 6.5A2 2 0 0 1 5.5 4.5h4l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-11Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></span>
+                <span class="min-w-0 flex-1"><span class="block truncate text-base font-semibold">{{ subject.title }}</span><span class="mt-1 block text-xs text-slate-500">{{ subject.chapters.length }} chapters · {{ subject.chapters.reduce((sum, chapter) => sum + chapter.lessons.length, 0) }} lessons</span></span>
+                <span class="pr-1 text-lg text-slate-400">{{ expandedSubjectId === subject.id ? '−' : '+' }}</span>
+              </button>
+              <div v-if="isManager" class="flex shrink-0 gap-2"><button type="button" class="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700" @click="editSubject(subject)">Edit</button><button type="button" class="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700" @click="removeSubject(subject)">Archive</button></div>
             </div>
 
-            <div class="space-y-3 p-3 sm:p-5">
+            <div v-if="expandedSubjectId === subject.id" class="space-y-3 p-3 sm:p-5">
               <div v-for="(chapter, chapterIndex) in subject.chapters" :key="chapter.id" class="overflow-hidden rounded-xl border border-slate-200">
                 <button type="button" class="flex w-full items-center gap-3 bg-slate-50 px-3 py-3 text-left hover:bg-slate-100 sm:px-4" :aria-expanded="expandedChapterId === chapter.id" @click="expandedChapterId = expandedChapterId === chapter.id ? '' : chapter.id">
                   <span class="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-white text-xs font-bold text-slate-600 ring-1 ring-slate-200">{{ subjectIndex + 1 }}.{{ chapterIndex + 1 }}</span>
@@ -536,9 +547,13 @@ onMounted(async () => {
                   </div>
 
                   <div v-if="chapter.lessons.length" class="divide-y divide-slate-100 rounded-xl border border-slate-100">
-                    <article v-for="(lesson, lessonIndex) in chapter.lessons" :key="lesson.id" class="flex flex-wrap items-center gap-3 p-3">
-                      <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-slate-100 text-[10px] font-bold text-slate-700">{{ lesson.lessonType === 'video' ? '▶' : lesson.lessonType === 'file' ? 'PDF' : 'TXT' }}</span>
-                      <div class="min-w-0 flex-1"><p class="text-sm font-semibold">{{ lessonIndex + 1 }}. {{ lesson.title }}</p><p class="mt-1 text-xs text-slate-500">{{ lesson.lessonType || 'text' }}<span v-if="lesson.durationSeconds"> · {{ Math.ceil(lesson.durationSeconds / 60) }} min</span><span v-if="lesson.isPreview"> · Preview</span></p></div>
+                    <article v-for="(lesson, lessonIndex) in chapter.lessons" :key="lesson.id" class="flex flex-wrap items-center gap-3 p-3 sm:gap-4">
+                      <button type="button" class="group relative h-[76px] w-28 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 text-left shadow-sm transition hover:border-blue-400 hover:shadow-md sm:h-[88px] sm:w-36" :aria-label="'Open lesson ' + lesson.title" @click="openLesson(lesson)">
+                        <img v-if="lesson.thumbnailUrl" :src="protectedDownloadUrl(lesson.thumbnailUrl)" :alt="lesson.title + ' thumbnail'" loading="lazy" class="h-full w-full object-cover transition duration-200 group-hover:scale-105" />
+                        <span v-else class="flex h-full w-full flex-col items-center justify-center gap-1 bg-gradient-to-br from-slate-100 to-slate-200 text-slate-600"><span class="text-xl font-bold">{{ lesson.lessonType === 'video' ? '▶' : lesson.lessonType === 'file' ? 'PDF' : 'Aa' }}</span><span class="text-[9px] font-semibold uppercase tracking-wider">{{ lesson.lessonType === 'video' ? 'Video' : lesson.lessonType === 'file' ? 'Document' : 'Lesson' }}</span></span>
+                        <span v-if="lesson.lessonType === 'video'" class="absolute bottom-1.5 right-1.5 grid h-7 w-7 place-items-center rounded-full bg-slate-950/80 text-xs text-white">▶</span>
+                      </button>
+                      <div class="min-w-0 flex-1"><button type="button" class="text-left text-sm font-semibold hover:text-blue-700" @click="openLesson(lesson)">{{ lessonIndex + 1 }}. {{ lesson.title }}</button><p class="mt-1 text-xs capitalize text-slate-500">{{ lesson.lessonType || 'text' }}<span v-if="lesson.durationSeconds"> · {{ Math.ceil(lesson.durationSeconds / 60) }} min</span><span v-if="lesson.isPreview"> · Preview</span></p></div>
                       <div class="flex flex-wrap gap-2"><button type="button" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:border-blue-400" @click="openLesson(lesson)">{{ isManager ? 'Preview' : 'Open lesson' }}</button><button v-if="isManager" type="button" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700" @click="editLesson(chapter, lesson)">Edit</button><button v-if="isManager" type="button" class="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700" @click="removeLesson(lesson)">Archive</button><button v-if="isLearner" type="button" :disabled="busyLessonId === lesson.id" class="rounded-lg bg-emerald-100 px-3 py-2 text-xs font-semibold text-emerald-800 disabled:opacity-50" @click="markComplete(lesson)">{{ busyLessonId === lesson.id ? 'Saving…' : 'Mark complete' }}</button></div>
                     </article>
                   </div>
@@ -552,6 +567,7 @@ onMounted(async () => {
                       <div><label for="lessonType" class="mb-1.5 block text-xs font-semibold text-slate-600">Lesson type</label><select id="lessonType" v-model="lessonType" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm"><option value="text">Text lesson</option><option value="video">Video lesson</option><option value="file">PDF or image</option></select></div>
                       <div><label for="lessonDuration" class="mb-1.5 block text-xs font-semibold text-slate-600">Duration (minutes, optional)</label><input id="lessonDuration" v-model.number="lessonDuration" type="number" min="0" max="1440" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm" /></div>
                     </div>
+                    <div><label for="lessonThumbnail" class="mb-1.5 block text-xs font-semibold text-slate-600">Thumbnail image URL (optional)</label><input id="lessonThumbnail" v-model="lessonThumbnailUrl" type="url" maxlength="2048" placeholder="https://cdn.example.com/lesson-cover.jpg" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100" /><p class="mt-1 text-[11px] leading-5 text-slate-500">Video thumbnails are provided by Bunny when available. You may set a custom HTTPS image.</p></div>
                     <div v-if="lessonType === 'text'"><label for="lessonContent" class="mb-1.5 block text-xs font-semibold text-slate-600">Lesson content</label><textarea id="lessonContent" v-model="lessonContent" required rows="4" maxlength="50000" placeholder="Write the lesson content…" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm leading-6 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100" /></div>
                     <template v-else>
                       <div><label :for="'asset-' + chapter.id" class="mb-1.5 block text-xs font-semibold text-slate-600">Ready media from Bunny</label><select :id="'asset-' + chapter.id" v-model="lessonAssetId" required class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm"><option value="" disabled>Select a ready {{ lessonType === 'video' ? 'video' : 'PDF/image' }}</option><option v-for="asset in availableAssets(chapter)" :key="asset.id" :value="asset.id">{{ asset.title }} · {{ asset.status }}</option></select><p v-if="!availableAssets(chapter).length" class="mt-1 text-xs text-slate-500">Upload the media below. It appears here when Ready.</p></div>
@@ -607,8 +623,9 @@ onMounted(async () => {
         <div v-if="playbackBusy" class="grid min-h-40 place-items-center text-sm text-slate-500"><span class="animate-pulse">Loading lesson…</span></div>
         <div v-else-if="playback?.content" class="prose prose-sm mt-5 max-w-none whitespace-pre-wrap leading-7 text-slate-800">{{ playback.content }}</div>
         <div v-else-if="playback?.playbackUrl" class="mt-5 aspect-video overflow-hidden rounded-xl bg-black"><iframe :src="playback.playbackUrl" class="h-full w-full" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture" allowfullscreen title="Lesson video" /></div>
+        <iframe v-else-if="playback?.downloadUrl && playback.contentType === 'application/pdf'" :src="protectedDownloadUrl(playback.downloadUrl)" class="mt-5 h-[72vh] w-full rounded-xl border border-slate-200 bg-slate-50" title="Lesson PDF" />
         <img v-else-if="playback?.downloadUrl && playback.contentType?.startsWith('image/')" :src="protectedDownloadUrl(playback.downloadUrl)" :alt="playbackLesson.title" class="mt-5 max-h-[70vh] w-full rounded-xl border border-slate-200 bg-slate-50 object-contain" />
-        <a v-else-if="playback?.downloadUrl" :href="protectedDownloadUrl(playback.downloadUrl)" target="_blank" rel="noopener noreferrer" class="mt-5 inline-flex rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white">Open PDF / file</a>
+        <a v-else-if="playback?.downloadUrl" :href="protectedDownloadUrl(playback.downloadUrl)" target="_blank" rel="noopener noreferrer" class="mt-5 inline-flex rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white">Open file</a>
         <p v-else-if="!playbackBusy" class="mt-5 rounded-xl bg-slate-50 p-4 text-sm text-slate-600">This lesson is not ready or your account does not have access.</p>
       </section>
     </div>
