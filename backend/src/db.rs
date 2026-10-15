@@ -20,6 +20,17 @@ pub async fn ensure_indexes(db: &Database) -> mongodb::error::Result<()> {
     let subscription_orders: Collection<mongodb::bson::Document> = db.collection("subscription_orders");
     let subscription_payments: Collection<mongodb::bson::Document> = db.collection("subscription_payments");
     let refresh_sessions: Collection<mongodb::bson::Document> = db.collection("refresh_sessions");
+    let company_sites: Collection<mongodb::bson::Document> = db.collection("company_sites");
+
+    create_index(
+        &company_sites,
+        IndexModel::builder()
+            .keys(doc! { "companyId": 1 })
+            .options(IndexOptions::builder().unique(true).build())
+            .build(),
+    )
+    .await?;
+
 
     create_index(
         &refresh_sessions,
