@@ -2,7 +2,13 @@
 import type { CompanyUser } from '~/types/api'
 import { apiErrorMessage } from '~/utils/api-error'
 
-definePageMeta({ middleware: 'auth' })
+definePageMeta({ middleware: ['auth', 'company-dashboard'], alias: ['/workspace/:companySlug/dashboard/users'] })
+
+const route = useRoute()
+function workspacePath(suffix = '') {
+  const slug = String(route.params.companySlug || currentCompany.value?.slug || '').trim()
+  return slug ? '/workspace/' + encodeURIComponent(slug) + '/dashboard' + suffix : '/dashboard' + suffix
+}
 
 const { currentUser, currentCompany, getCompanyUsers, createCompanyUser, updateCompanyUser } = useAuth()
 const users = ref<CompanyUser[]>([])
@@ -78,7 +84,7 @@ onMounted(() => { void load() })
 
 <template>
   <div class="min-h-screen bg-canvas">
-    <header class="border-b border-line bg-white"><div class="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-4 sm:px-6"><NuxtLink to="/dashboard" class="inline-flex items-center gap-3 font-semibold"><span class="grid h-10 w-10 place-items-center rounded-2xl bg-brand text-lg font-black text-white">N</span>newage<span class="text-brand">.</span></NuxtLink><NuxtLink to="/dashboard" class="rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-muted hover:bg-canvas">Workspace</NuxtLink></div></header>
+    <header class="border-b border-line bg-white"><div class="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-4 sm:px-6"><NuxtLink :to="workspacePath()" class="inline-flex items-center gap-3 font-semibold"><span class="grid h-10 w-10 place-items-center rounded-2xl bg-brand text-lg font-black text-white">N</span>newage<span class="text-brand">.</span></NuxtLink><NuxtLink :to="workspacePath()" class="rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-muted hover:bg-canvas">Workspace</NuxtLink></div></header>
     <main class="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10">
       <p class="text-xs font-bold uppercase tracking-[0.2em] text-brand">People & access</p><div class="mt-3 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><h1 class="text-3xl font-semibold tracking-tight sm:text-4xl">Your workspace team.</h1><p class="mt-3 max-w-2xl text-sm leading-6 text-muted">Manage team roles and disable access when someone no longer needs it. All changes are enforced by the Rust API.</p></div><button v-if="['owner','admin'].includes(currentUser?.role || '')" type="button" class="rounded-xl bg-brand px-5 py-3.5 text-sm font-semibold text-white hover:bg-brand-dark" @click="formOpen = !formOpen">{{ formOpen ? 'Close form' : 'Add a teammate' }}</button></div>
       <section v-if="employeeLoginPath && ['owner', 'admin'].includes(currentUser?.role || '')" class="mt-6 flex flex-col justify-between gap-4 rounded-2xl border border-line bg-white p-5 sm:flex-row sm:items-center">
