@@ -2,7 +2,7 @@
 import type { Course, LearnerCourse } from '~/types/api'
 import { apiErrorMessage } from '~/utils/api-error'
 
-definePageMeta({ middleware: 'auth' })
+definePageMeta({ middleware: ['auth', 'company-dashboard'], alias: ['/workspace/:companySlug/dashboard/learn'] })
 
 type OrderResponse = {
   enrolled?: boolean
@@ -20,7 +20,7 @@ declare global {
   }
 }
 
-const { currentUser, getCourses, getMyCourses, getCourseProgress, createCourseOrder, verifyCoursePayment } = useAuth()
+const { currentUser, currentCompany, getCourses, getMyCourses, getCourseProgress, createCourseOrder, verifyCoursePayment } = useAuth()
 const route = useRoute()
 const courses = ref<Course[]>([])
 const enrolled = ref<LearnerCourse[]>([])
@@ -121,7 +121,7 @@ async function enroll(course: Course) {
 
 onMounted(async () => {
   if (!isLearner.value) {
-    await navigateTo('/dashboard')
+    await navigateTo(currentCompany.value?.slug ? '/workspace/' + encodeURIComponent(currentCompany.value.slug) + '/dashboard' : '/dashboard')
     return
   }
   await load()
@@ -146,8 +146,8 @@ async function continueRequestedCheckout() {
   <div class="min-h-screen bg-canvas">
     <header class="border-b border-line bg-white">
       <div class="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-4 sm:px-6">
-        <NuxtLink to="/" class="inline-flex items-center gap-3 font-semibold"><span class="grid h-10 w-10 place-items-center rounded-2xl bg-brand text-lg font-black text-white">N</span>newage<span class="text-brand">.</span></NuxtLink>
-        <div class="flex items-center gap-3"><span class="hidden text-sm text-muted sm:block">{{ currentUser?.name }}</span><NuxtLink to="/dashboard" class="rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-muted hover:bg-canvas">Workspace</NuxtLink></div>
+        <NuxtLink :to="currentCompany?.slug ? '/p/' + currentCompany.slug : '/'" class="inline-flex min-w-0 items-center gap-3 font-semibold"><span class="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-brand text-lg font-black text-white">{{ (currentCompany?.name || 'N').slice(0, 1).toUpperCase() }}</span><span class="min-w-0"><span class="block truncate">{{ currentCompany?.name || 'newage' }}</span><span class="block text-[10px] font-medium uppercase tracking-wider text-muted">Learning dashboard</span></span></NuxtLink>
+        <div class="flex items-center gap-3"><span class="hidden text-sm text-muted sm:block">{{ currentUser?.name }}</span><NuxtLink :to="currentCompany?.slug ? '/workspace/' + encodeURIComponent(currentCompany.slug) + '/dashboard' : '/dashboard'" class="rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-muted hover:bg-canvas">Workspace</NuxtLink></div>
       </div>
     </header>
     <main class="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10">
