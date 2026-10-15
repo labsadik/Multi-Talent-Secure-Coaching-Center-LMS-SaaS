@@ -5,7 +5,7 @@ Nuxt 4 + Vue 3 + Tailwind CSS 4 frontend for the Newage LMS API.
 ## Requirements
 
 - Node.js 22.12 or newer
-- npm
+- npm 11 recommended
 - The Rust API and its MongoDB database running locally
 
 ## Run locally on Windows PowerShell
@@ -18,6 +18,11 @@ From the repository root:
     npm run dev
 
 Open http://localhost:3000. Keep the Rust API running at http://127.0.0.1:8080 in another terminal.
+
+If npm 10.9.x fails during dependency installation with the error "Cannot read properties of null (reading 'edgesOut')", update npm and retry:
+
+    npm install --global npm@11
+    npm install
 
 The frontend uses NUXT_PUBLIC_API_BASE for the API origin. Add the exact frontend origin to backend/.env under CORS_ALLOWED_ORIGINS. The backend example already allows http://localhost:3000. If you use a different hostname or port, update the CORS list, restart the backend, and restart Nuxt.
 
