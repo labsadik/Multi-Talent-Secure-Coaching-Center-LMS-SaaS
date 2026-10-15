@@ -8,7 +8,6 @@ use crate::{
     auth::valid_slug,
     error::{AppError, AppResult},
     state::AppState,
-    tenant::require_active_company,
 };
 
 #[derive(Debug, Deserialize)]
@@ -37,15 +36,24 @@ pub async fn list_courses(
     State(state): State<AppState>,
     auth: AuthUser,
 ) -> AppResult<Json<Vec<CourseResponse>>> {
-    require_active_company(&state.db, &auth.company_id).await?;
+    // Learners may discover only published courses; staff can also see drafts.
+    let filter = if auth.can_manage_content() {
+        doc! {
+            "companyId": auth.company_id.clone(),
+            "deletedAt": { "$exists": false },
+        }
+    } else {
+        doc! {
+            "companyId": auth.company_id.clone(),
+            "status": "published",
+            "deletedAt": { "$exists": false },
+        }
+    };
 
     let cursor = state
         .db
         .collection::<Document>("courses")
-        .find(doc! {
-            "companyId": auth.company_id.clone(),
-            "deletedAt": { "$exists": false },
-        })
+        .find(filter)
         .sort(doc! { "createdAt": -1 })
         .limit(100)
         .await
@@ -70,8 +78,6 @@ pub async fn create_course(
     if !auth.can_manage_content() {
         return Err(AppError::Forbidden);
     }
-    require_active_company(&state.db, &auth.company_id).await?;
-
     let title = input.title.trim().to_owned();
     let slug = input.slug.trim().to_ascii_lowercase();
     let description = input.description.map(|value| value.trim().to_owned());
@@ -79,7 +85,7 @@ pub async fn create_course(
 
     if !(3..=140).contains(&title.chars().count())
         || !valid_slug(&slug)
-        || price_in_paise < 0
+        || !(0..=100_000_000).contains(&price_in_paise)
         || description
             .as_ref()
             .is_some_and(|value| value.chars().count() > 10_000)
