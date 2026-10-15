@@ -131,6 +131,50 @@ impl BunnyStream {
         })
     }
 
+    /// Updates a video's title and collection so completed lessons are grouped in the
+    /// collection named for their tenant/course/curriculum path.
+    pub async fn update_video(
+        &self,
+        video_id: &str,
+        title: &str,
+        collection_id: &str,
+    ) -> AppResult<()> {
+        if video_id.is_empty()
+            || video_id.len() > 128
+            || !video_id.chars().all(|ch| ch.is_ascii_alphanumeric() || "-_".contains(ch))
+        {
+            return Err(AppError::BadRequest("invalid Bunny video ID"));
+        }
+        let title = title.trim();
+        if title.is_empty() || title.chars().count() > 160 {
+            return Err(AppError::BadRequest("video title must be between 1 and 160 characters"));
+        }
+        if collection_id.is_empty() || collection_id.chars().count() > 128 {
+            return Err(AppError::BadRequest("invalid Bunny Stream collection ID"));
+        }
+
+        let response: serde_json::Value = self
+            .client
+            .post(format!(
+                "https://video.bunnycdn.com/library/{}/videos/{}",
+                self.library_id, video_id
+            ))
+            .header("AccessKey", &self.api_key)
+            .json(&serde_json::json!({
+                "title": title,
+                "collectionId": collection_id
+            }))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        if response.get("success").and_then(serde_json::Value::as_bool) == Some(false) {
+            return Err(AppError::ServiceUnavailable("Bunny Stream video organization"));
+        }
+        Ok(())
+    }
+
     /// Creates a video record in the shared Stream library.
     /// Persist the returned GUID with companyId/courseId/subjectId/topicId in MongoDB.
     pub async fn create_video(
