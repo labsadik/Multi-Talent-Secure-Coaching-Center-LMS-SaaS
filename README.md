@@ -4,9 +4,9 @@ Multi-tenant learning management platform with a Rust API and a Nuxt.js web fron
 
 ## Quick start on Windows / VS Code
 
-The current LMS implementation lives on `backend/rust-foundation`; the repository's default `main` branch has not received this feature branch yet. For a fresh checkout, explicitly clone the feature branch:
+The LMS implementation is available on the repository's default `main` branch. For a fresh checkout:
 
-    git clone --branch backend/rust-foundation https://github.com/WorkRCS/newage.git
+    git clone https://github.com/WorkRCS/newage.git
     cd newage
 
 Install Node.js 22.12+, the stable Rust toolchain, and Docker Desktop. From VS Code's PowerShell terminal at the repository root, run:
@@ -69,7 +69,7 @@ This repository is a development foundation. Provider sandbox verification, oper
 
 ## Company-specific employee login
 
-Every workspace has its own employee login panel at `/workspace/<company-slug>/login`. Owners/admins can copy the exact company URL from **Dashboard → People**. Password sign-in looks up an active user within that exact company ID; Slack sign-in requires a verified email already present in that company plus a configured matching Slack workspace. It never provisions a new user through Slack.
+Every workspace has its own employee login panel at `/workspace/<company-slug>/login`. Owners/admins can copy the exact company URL from **Dashboard → People**. Login verifies an active user within that exact company ID.
 
 ## Media storage layout
 
