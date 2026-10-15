@@ -55,6 +55,7 @@ const chapterSlug = ref('')
 const chapterSlugTouched = ref(false)
 
 const activeLessonChapterId = ref('')
+const mediaEditorLessonId = ref('')
 const editingLesson = ref<ContentItem | null>(null)
 const lessonTitle = ref('')
 const lessonSlug = ref('')
@@ -487,6 +488,141 @@ async function uploadVideo(chapter: ChapterView, event: Event, insideLesson = fa
     uploadActivity.value = null
   }
 }
+function toggleLessonMediaEditor(lesson: ContentItem) {
+  resetMessages()
+  mediaEditorLessonId.value = mediaEditorLessonId.value === lesson.id ? '' : lesson.id
+}
+function filenameForLesson(lessonTitle: string, file: File) {
+  const extension = file.name.includes('.') ? file.name.slice(file.name.lastIndexOf('.')) : ''
+  return lessonTitle.trim() + extension
+}
+function mediaUpdatePayload(lesson: ContentItem, lessonType: 'video' | 'file', mediaAssetId: string) {
+  return {
+    title: lesson.title,
+    slug: lesson.slug,
+    lessonType,
+    content: undefined,
+    thumbnailUrl: lesson.thumbnailUrl || undefined,
+    mediaAssetId,
+    durationSeconds: Math.max(0, Number(lesson.durationSeconds || 0)),
+    isPreview: Boolean(lesson.isPreview),
+    sortOrder: Number(lesson.sortOrder || 0),
+  }
+}
+async function uploadMediaForExistingLesson(chapter: ChapterView, lesson: ContentItem, event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+
+  const isPdfOrImage = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf'].includes(file.type)
+  if (!isPdfOrImage) {
+    pageError.value = 'Choose a JPG, PNG, WebP, GIF image or PDF file.'
+    return
+  }
+  if (file.size > 20 * 1024 * 1024) {
+    pageError.value = 'Images and PDFs must be 20 MB or smaller.'
+    return
+  }
+
+  resetMessages()
+  uploadActivity.value = { chapterId: chapter.id, kind: 'file', filename: filenameForLesson(lesson.title, file) }
+  uploadProgress.value = 0
+  try {
+    const result = await uploadAsset(
+      chapter.id,
+      file,
+      undefined,
+      percent => { uploadProgress.value = percent },
+      filenameForLesson(lesson.title, file),
+    )
+    const assetId = String(result.assetId || '')
+    if (!assetId) throw new Error('Bunny Storage did not return a media ID.')
+
+    // Attach the new asset to the already-created lesson immediately. No lesson
+    // form resubmission or second save is required.
+    await updateLesson(lesson.id, mediaUpdatePayload(lesson, 'file', assetId))
+    mediaEditorLessonId.value = ''
+    successMessage.value = 'PDF/image uploaded and attached to "' + lesson.title + '".'
+    await loadOutline(false)
+  } catch (error) {
+    pageError.value = apiErrorMessage(error, 'PDF/image could not be uploaded to this lesson.')
+  } finally {
+    uploadActivity.value = null
+  }
+}
+async function uploadVideoForExistingLesson(chapter: ChapterView, lesson: ContentItem, event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  if (!file.type.startsWith('video/')) {
+    pageError.value = 'Choose a video file for Bunny Stream.'
+    return
+  }
+
+  resetMessages()
+  uploadActivity.value = { chapterId: chapter.id, kind: 'video', filename: lesson.title }
+  uploadProgress.value = 0
+  let assetId = ''
+  try {
+    const ticket = await createVideoTicket(chapter.id, lesson.title) as unknown as {
+      assetId: string
+      status: string
+      upload: {
+        endpoint: string
+        videoId: string
+        libraryId: number
+        authorizationSignature: string
+        authorizationExpire: number
+      }
+    }
+    if (!ticket.assetId || !ticket.upload?.endpoint) {
+      throw new Error('Bunny Stream did not return a valid upload ticket.')
+    }
+    assetId = ticket.assetId
+    const tusModule = await import('tus-js-client')
+    await new Promise<void>((resolve, reject) => {
+      const upload = new tusModule.Upload(file, {
+        endpoint: ticket.upload.endpoint,
+        headers: {
+          AuthorizationSignature: ticket.upload.authorizationSignature,
+          AuthorizationExpire: String(ticket.upload.authorizationExpire),
+          VideoId: ticket.upload.videoId,
+          LibraryId: String(ticket.upload.libraryId),
+        },
+        metadata: {
+          filename: lesson.title,
+          filetype: file.type || 'application/octet-stream',
+        },
+        retryDelays: [0, 1000, 3000, 5000],
+        onError: reject,
+        onProgress: (sent, total) => {
+          uploadProgress.value = total ? Math.round(sent / total * 100) : 0
+        },
+        onSuccess: () => resolve(),
+      })
+      upload.start()
+    })
+
+    // Replace media on the existing lesson record. Video playback stays gated
+    // until the Bunny webhook/status API reports Ready.
+    await updateLesson(lesson.id, mediaUpdatePayload(lesson, 'video', assetId))
+    mediaEditorLessonId.value = ''
+    successMessage.value = 'Video linked to "' + lesson.title + '". Bunny Stream will show Processing until it is Ready.'
+    await loadOutline(false)
+    void refreshAllVideoStatuses()
+  } catch (error) {
+    if (assetId) {
+      // If upload/attachment failed, best-effort cleanup avoids orphaning a Stream video.
+      await permanentlyDeleteAsset(assetId).catch(() => undefined)
+    }
+    pageError.value = apiErrorMessage(error, 'Video could not be uploaded or attached to this lesson.')
+  } finally {
+    uploadActivity.value = null
+  }
+}
+
 async function refreshAllVideoStatuses() {
   if (pollingVideos.value || !isManager.value) return
   pollingVideos.value = true
@@ -642,7 +778,30 @@ onMounted(async () => {
                         <span v-if="lesson.lessonType === 'video'" class="absolute bottom-1.5 right-1.5 grid h-7 w-7 place-items-center rounded-full bg-slate-950/80 text-xs text-white">▶</span>
                       </button>
                       <div class="min-w-0 flex-1"><button type="button" class="text-left text-sm font-semibold hover:text-blue-700" @click="openLesson(lesson)">{{ lessonIndex + 1 }}. {{ lesson.title }}</button><p class="mt-1 text-xs capitalize text-slate-500">{{ lesson.lessonType || 'text' }}<span v-if="lesson.durationSeconds"> · {{ Math.ceil(lesson.durationSeconds / 60) }} min</span><span v-if="lesson.isPreview"> · Preview</span></p></div>
-                      <div class="flex flex-wrap gap-2"><button type="button" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:border-blue-400" @click="openLesson(lesson)">{{ isManager ? 'Preview' : 'Open lesson' }}</button><button v-if="isManager" type="button" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700" @click="editLesson(chapter, lesson)">Edit</button><button v-if="isManager" type="button" class="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700" @click="removeLesson(lesson)">Archive</button><button v-if="isManager" type="button" class="rounded-lg border border-red-300 px-3 py-2 text-xs font-semibold text-red-800" @click="permanentlyRemoveLesson(lesson)">Delete</button><button v-if="isLearner" type="button" :disabled="busyLessonId === lesson.id" class="rounded-lg bg-emerald-100 px-3 py-2 text-xs font-semibold text-emerald-800 disabled:opacity-50" @click="markComplete(lesson)">{{ busyLessonId === lesson.id ? 'Saving…' : 'Mark complete' }}</button></div>
+                      <div class="flex flex-wrap gap-2"><button type="button" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:border-blue-400" @click="openLesson(lesson)">{{ isManager ? 'Preview' : 'Open lesson' }}</button><button v-if="isManager" type="button" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700" @click="editLesson(chapter, lesson)">Edit</button><button v-if="isManager" type="button" class="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700" @click="removeLesson(lesson)">Archive</button><button v-if="isManager" type="button" class="rounded-lg border border-red-300 px-3 py-2 text-xs font-semibold text-red-800" @click="permanentlyRemoveLesson(lesson)">Delete</button><button v-if="isManager" type="button" class="rounded-lg border border-violet-200 px-3 py-2 text-xs font-semibold text-violet-800 hover:border-violet-400" @click="toggleLessonMediaEditor(lesson)">{{ mediaEditorLessonId === lesson.id ? 'Close media' : 'Update media' }}</button><button v-if="isLearner" type="button" :disabled="busyLessonId === lesson.id" class="rounded-lg bg-emerald-100 px-3 py-2 text-xs font-semibold text-emerald-800 disabled:opacity-50" @click="markComplete(lesson)">{{ busyLessonId === lesson.id ? 'Saving…' : 'Mark complete' }}</button></div>
+                      <section v-if="isManager && mediaEditorLessonId === lesson.id" class="basis-full rounded-xl border border-violet-100 bg-violet-50/40 p-3">
+                        <div class="mb-3 flex flex-wrap items-start justify-between gap-2">
+                          <div><h4 class="text-sm font-semibold">Update media · {{ lesson.title }}</h4><p class="mt-1 text-xs text-slate-500">Replace the file attached to this existing lesson. No need to edit or recreate the lesson.</p></div>
+                          <button type="button" class="text-xs font-semibold text-slate-500 underline" @click="mediaEditorLessonId = ''">Close</button>
+                        </div>
+                        <div class="grid gap-3 sm:grid-cols-2">
+                          <label class="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 hover:border-violet-400" :class="{ 'pointer-events-none opacity-50': !!uploadActivity }">
+                            <span class="grid h-9 w-9 place-items-center rounded-lg bg-violet-100 text-xs font-bold text-violet-800">▶</span>
+                            <span class="min-w-0 flex-1"><span class="block text-sm font-semibold">Upload / replace video</span><span class="block text-xs text-slate-500">Bunny Stream · uses lesson name</span></span>
+                            <input type="file" accept="video/*" class="sr-only" :disabled="!!uploadActivity" @change="uploadVideoForExistingLesson(chapter, lesson, $event)" />
+                          </label>
+                          <label class="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 hover:border-blue-400" :class="{ 'pointer-events-none opacity-50': !!uploadActivity }">
+                            <span class="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-xs font-bold">PDF</span>
+                            <span class="min-w-0 flex-1"><span class="block text-sm font-semibold">Upload / replace PDF or image</span><span class="block text-xs text-slate-500">Bunny Storage · lesson folder</span></span>
+                            <input type="file" accept="image/jpeg,image/png,image/webp,image/gif,application/pdf" class="sr-only" :disabled="!!uploadActivity" @change="uploadMediaForExistingLesson(chapter, lesson, $event)" />
+                          </label>
+                        </div>
+                        <div v-if="uploadActivity?.chapterId === chapter.id && mediaEditorLessonId === lesson.id" class="mt-3 rounded-lg bg-white p-3">
+                          <div class="flex items-center justify-between gap-3 text-xs"><span class="min-w-0 truncate font-medium">{{ uploadActivity.filename }}</span><span class="shrink-0 font-semibold">{{ uploadActivity.kind === 'video' ? 'Uploading' : 'Uploading' }} · {{ uploadProgress }}%</span></div>
+                          <div class="mt-2 h-2 overflow-hidden rounded-full bg-slate-200"><div class="h-full rounded-full bg-violet-600 transition-all" :style="{ width: uploadProgress + '%' }" /></div>
+                          <p class="mt-2 text-xs text-slate-500">{{ uploadActivity.kind === 'video' ? 'Uploading to Bunny Stream… lesson will switch to Processing and then Ready.' : 'Uploading to Bunny Storage… attaching to this lesson automatically.' }}</p>
+                        </div>
+                      </section>
                     </article>
                   </div>
                   <p v-else class="rounded-xl border border-dashed border-slate-200 px-4 py-7 text-center text-sm text-slate-500">No lessons yet. Add the first lesson to this chapter.</p>
@@ -699,7 +858,7 @@ onMounted(async () => {
                       <label class="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 px-3 py-3 hover:border-blue-400"><span class="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-xs font-bold">PDF</span><span class="min-w-0 flex-1"><span class="block text-sm font-semibold">Upload image or PDF</span><span class="block text-xs text-slate-500">JPG, PNG, WebP, GIF, PDF · max 20 MB</span></span><input type="file" accept="image/jpeg,image/png,image/webp,image/gif,application/pdf" class="sr-only" :disabled="!!uploadActivity" @change="uploadStorageFile(chapter, $event)" /></label>
                       <label class="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 px-3 py-3 hover:border-blue-400"><span class="grid h-9 w-9 place-items-center rounded-lg bg-violet-100 text-xs font-bold text-violet-800">▶</span><span class="min-w-0 flex-1"><span class="block text-sm font-semibold">Upload video</span><span class="block text-xs text-slate-500">Bunny Stream · processing tracked</span></span><input type="file" accept="video/*" class="sr-only" :disabled="!!uploadActivity" @change="uploadVideo(chapter, $event)" /></label>
                     </div>
-                    <div v-if="uploadActivity?.chapterId === chapter.id && activeLessonChapterId !== chapter.id" class="mt-4 rounded-lg bg-slate-50 p-3">
+                    <div v-if="uploadActivity?.chapterId === chapter.id && activeLessonChapterId !== chapter.id && !mediaEditorLessonId" class="mt-4 rounded-lg bg-slate-50 p-3">
                       <div class="flex items-center justify-between gap-3 text-xs"><span class="min-w-0 truncate font-medium">{{ uploadActivity.filename }}</span><span class="shrink-0 font-semibold">{{ uploadProgress }}%</span></div>
                       <div class="mt-2 h-2 overflow-hidden rounded-full bg-slate-200"><div class="h-full rounded-full bg-blue-700 transition-all" :style="{ width: uploadProgress + '%' }" /></div>
                       <p class="mt-2 text-xs text-slate-500">{{ uploadActivity.kind === 'video' ? 'Uploading video to Bunny Stream…' : 'Uploading file to Bunny Storage…' }}</p>
