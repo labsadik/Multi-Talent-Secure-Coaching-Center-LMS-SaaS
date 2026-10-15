@@ -29,6 +29,12 @@ const {
   createTopic,
   getLessons,
   createLesson,
+  updateSubject,
+  deleteSubject,
+  updateTopic,
+  deleteTopic,
+  updateLesson,
+  deleteLesson,
   uploadAsset,
   createVideoTicket,
   refreshAssetStatus,
@@ -62,6 +68,17 @@ const lessonDuration = ref(0)
 const playback = ref<PlaybackInfo | null>(null)
 const playbackLesson = ref<ContentItem | null>(null)
 const busyLessonId = ref('')
+type EditableKind = 'subject' | 'topic' | 'lesson'
+const editTarget = ref<{ kind: EditableKind; item: ContentItem } | null>(null)
+const editTitle = ref('')
+const editSlug = ref('')
+const editDescription = ref('')
+const editSortOrder = ref(0)
+const editLessonType = ref<'text' | 'video' | 'file'>('text')
+const editLessonContent = ref('')
+const editMediaAssetId = ref('')
+const editDuration = ref(0)
+const editPreview = ref(false)
 
 const canManageContent = computed(() => ['owner', 'admin', 'instructor'].includes(currentUser.value?.role ?? ''))
 
@@ -99,9 +116,13 @@ async function loadOutline() {
         }))),
       }
     }))
-    if (!selectedSubjectId.value && outline.value[0]) selectedSubjectId.value = outline.value[0].id
-    if (!selectedSubjectId.value && outline.value[0]) selectedSubjectId.value = outline.value[0].id
-    if (!selectedTopicId.value && outline.value[0]?.topics[0]) selectedTopicId.value = outline.value[0].topics[0].id
+    if (!outline.value.some((subject) => subject.id === selectedSubjectId.value)) {
+      selectedSubjectId.value = outline.value[0]?.id ?? ''
+    }
+    const allTopics = outline.value.flatMap((subject) => subject.topics)
+    if (!allTopics.some((topic) => topic.id === selectedTopicId.value)) {
+      selectedTopicId.value = allTopics[0]?.id ?? ''
+    }
   } catch (error) {
     errorMessage.value = apiErrorMessage(error, 'Course content could not be loaded.')
   } finally {
@@ -245,6 +266,75 @@ async function refreshVideo(assetId: string) {
     errorMessage.value = apiErrorMessage(error, 'Could not refresh video status. Bunny Stream may not be configured.')
   }
 }
+function beginEdit(kind: EditableKind, item: ContentItem) {
+  editTarget.value = { kind, item }
+  editTitle.value = item.title
+  editSlug.value = item.slug
+  editDescription.value = item.description ?? ''
+  editSortOrder.value = Number(item.sortOrder ?? 0)
+  editLessonType.value = (item.lessonType || 'text') as 'text' | 'video' | 'file'
+  editLessonContent.value = item.content ?? ''
+  editMediaAssetId.value = item.mediaAssetId ?? ''
+  editDuration.value = Number(item.durationSeconds ?? 0)
+  editPreview.value = Boolean(item.isPreview)
+  resetMessages()
+}
+
+async function saveEditedContent() {
+  const target = editTarget.value
+  if (!target) return
+  resetMessages()
+  saving.value = true
+  try {
+    const basic = {
+      title: editTitle.value.trim(),
+      slug: editSlug.value.trim().toLowerCase(),
+      description: editDescription.value.trim() || undefined,
+      sortOrder: Number(editSortOrder.value || 0),
+    }
+    if (target.kind === 'subject') {
+      await updateSubject(target.item.id, basic)
+    } else if (target.kind === 'topic') {
+      await updateTopic(target.item.id, basic)
+    } else {
+      await updateLesson(target.item.id, {
+        title: basic.title,
+        slug: basic.slug,
+        lessonType: editLessonType.value,
+        content: editLessonType.value === 'text' ? editLessonContent.value.trim() : undefined,
+        mediaAssetId: editLessonType.value === 'text' ? undefined : editMediaAssetId.value.trim(),
+        durationSeconds: Number(editDuration.value || 0),
+        isPreview: editPreview.value,
+        sortOrder: basic.sortOrder,
+      })
+    }
+    editTarget.value = null
+    await loadOutline()
+    successMessage.value = target.kind.charAt(0).toUpperCase() + target.kind.slice(1) + ' updated.'
+  } catch (error) {
+    errorMessage.value = apiErrorMessage(error, 'The changes could not be saved.')
+  } finally {
+    saving.value = false
+  }
+}
+
+async function archiveContent(kind: EditableKind, item: ContentItem) {
+  if (!import.meta.client || !window.confirm('Archive "' + item.title + '"? Child content will also be archived when applicable.')) return
+  resetMessages()
+  saving.value = true
+  try {
+    if (kind === 'subject') await deleteSubject(item.id)
+    else if (kind === 'topic') await deleteTopic(item.id)
+    else await deleteLesson(item.id)
+    await loadOutline()
+    successMessage.value = kind.charAt(0).toUpperCase() + kind.slice(1) + ' archived.'
+  } catch (error) {
+    errorMessage.value = apiErrorMessage(error, 'This item could not be archived.')
+  } finally {
+    saving.value = false
+  }
+}
+
 async function openLesson(lesson: ContentItem) {
   resetMessages()
   playbackLesson.value = lesson
@@ -338,10 +428,10 @@ onMounted(() => { void loadOutline() })
           <div v-else-if="!outline.length" class="mt-6 rounded-2xl border border-dashed border-slate-300 px-5 py-12 text-center"><h3 class="font-semibold">No subjects yet</h3><p class="mt-2 text-sm leading-6 text-muted">{{ canManageContent ? 'Add your first subject to start mapping the learning path.' : 'This course has not published any learning content yet.' }}</p></div>
           <div v-else class="mt-6 space-y-4">
             <article v-for="(subject, subjectIndex) in outline" :key="subject.id" class="overflow-hidden rounded-2xl border border-line">
-              <div class="flex items-start gap-3 bg-canvas px-4 py-4"><span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-soft text-xs font-bold text-brand">{{ String(subjectIndex + 1).padStart(2, '0') }}</span><div class="min-w-0"><h3 class="font-semibold">{{ subject.title }}</h3><p class="mt-1 text-xs text-muted">{{ subject.topics.length }} topics</p></div></div>
+              <div class="flex items-start gap-3 bg-canvas px-4 py-4"><span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-soft text-xs font-bold text-brand">{{ String(subjectIndex + 1).padStart(2, '0') }}</span><div class="min-w-0 flex-1"><h3 class="font-semibold">{{ subject.title }}</h3><p class="mt-1 text-xs text-muted">{{ subject.topics.length }} topics <span v-if="subject.description">· {{ subject.description }}</span></p></div><div v-if="canManageContent" class="flex shrink-0 gap-2"><button type="button" class="rounded-lg border border-line bg-white px-2.5 py-1.5 text-xs font-semibold hover:border-brand hover:text-brand" @click="beginEdit('subject', subject)">Edit</button><button type="button" class="rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50" @click="archiveContent('subject', subject)">Archive</button></div></div>
               <div class="space-y-3 p-3 sm:p-4">
                 <div v-for="(topic, topicIndex) in subject.topics" :key="topic.id" class="rounded-xl border border-line p-3 sm:p-4">
-                  <div class="flex items-center justify-between gap-3"><div class="flex min-w-0 items-center gap-2"><span class="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-emerald-100 text-xs font-bold text-emerald-800">{{ subjectIndex + 1 }}.{{ topicIndex + 1 }}</span><div class="min-w-0"><h4 class="truncate text-sm font-semibold">{{ topic.title }}</h4><p class="mt-0.5 text-[11px] text-muted">{{ topic.lessons.length }} lessons</p></div></div><span v-if="canManageContent" class="text-[10px] font-semibold uppercase tracking-wider text-muted">Manage below</span></div>
+                  <div class="flex items-center justify-between gap-3"><div class="flex min-w-0 items-center gap-2"><span class="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-emerald-100 text-xs font-bold text-emerald-800">{{ subjectIndex + 1 }}.{{ topicIndex + 1 }}</span><div class="min-w-0"><h4 class="truncate text-sm font-semibold">{{ topic.title }}</h4><p class="mt-0.5 text-[11px] text-muted">{{ topic.lessons.length }} lessons <span v-if="topic.description">· {{ topic.description }}</span></p></div></div><div v-if="canManageContent" class="flex shrink-0 gap-2"><button type="button" class="rounded-lg border border-line px-2.5 py-1.5 text-xs font-semibold hover:border-brand hover:text-brand" @click="beginEdit('topic', topic)">Edit</button><button type="button" class="rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50" @click="archiveContent('topic', topic)">Archive</button></div></div>
                   <div v-if="canManageContent" class="mt-3 grid gap-3 rounded-xl bg-canvas p-3 sm:grid-cols-2">
                     <label class="block text-xs font-semibold text-muted">Upload image/PDF
                       <input type="file" accept="image/jpeg,image/png,image/webp,image/gif,application/pdf" :disabled="uploading" class="mt-2 block w-full text-xs file:mr-2 file:rounded-lg file:border-0 file:bg-white file:px-3 file:py-2 file:text-xs file:font-semibold file:text-brand" @change="uploadStorageFile(topic.id, $event)" />
@@ -356,7 +446,7 @@ onMounted(() => { void loadOutline() })
                     <div v-for="lesson in topic.lessons" :key="lesson.id" class="flex flex-col gap-2 rounded-xl border border-line/70 px-3 py-3 sm:flex-row sm:items-center">
                       <div class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white text-muted ring-1 ring-line"><svg v-if="lesson.lessonType === 'video'" viewBox="0 0 24 24" fill="none" class="h-4 w-4" aria-hidden="true"><path d="m8 5 11 7-11 7V5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" /></svg><svg v-else-if="lesson.lessonType === 'text'" viewBox="0 0 24 24" fill="none" class="h-4 w-4" aria-hidden="true"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" /></svg><svg v-else viewBox="0 0 24 24" fill="none" class="h-4 w-4" aria-hidden="true"><path d="M6 3h8l4 4v14H6zM14 3v5h5" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" /></svg></div>
                       <div class="min-w-0 flex-1"><p class="truncate text-sm font-medium">{{ lesson.title }}</p><p class="mt-0.5 text-[11px] capitalize text-muted">{{ lesson.lessonType || 'lesson' }}<span v-if="lesson.isPreview"> · preview</span></p></div>
-                      <div class="flex gap-2"><button type="button" class="rounded-lg border border-line px-3 py-2 text-xs font-semibold hover:bg-canvas" @click="openLesson(lesson)">Open</button><button v-if="currentUser?.role === 'learner'" type="button" :disabled="busyLessonId === lesson.id" class="rounded-lg bg-emerald-100 px-3 py-2 text-xs font-semibold text-emerald-800 disabled:opacity-50" @click="markComplete(lesson)">{{ busyLessonId === lesson.id ? 'Saving…' : 'Complete' }}</button></div>
+                      <div class="flex flex-wrap gap-2"><button type="button" class="rounded-lg border border-line px-3 py-2 text-xs font-semibold hover:bg-canvas" @click="openLesson(lesson)">Open</button><button v-if="canManageContent" type="button" class="rounded-lg border border-line px-3 py-2 text-xs font-semibold hover:border-brand hover:text-brand" @click="beginEdit('lesson', lesson)">Edit</button><button v-if="canManageContent" type="button" class="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50" @click="archiveContent('lesson', lesson)">Archive</button><button v-if="currentUser?.role === 'learner'" type="button" :disabled="busyLessonId === lesson.id" class="rounded-lg bg-emerald-100 px-3 py-2 text-xs font-semibold text-emerald-800 disabled:opacity-50" @click="markComplete(lesson)">{{ busyLessonId === lesson.id ? 'Saving…' : 'Complete' }}</button></div>
                       <button v-if="lesson.mediaAssetId && canManageContent" type="button" class="rounded-lg border border-line px-2 py-2 text-[10px] font-semibold text-muted hover:bg-canvas" @click="refreshVideo(lesson.mediaAssetId)">Refresh video</button>
                     </div>
                   </div>
@@ -366,6 +456,26 @@ onMounted(() => { void loadOutline() })
               </div>
             </article>
           </div>
+        </section>
+      </div>
+
+      <div v-if="editTarget" class="fixed inset-0 z-50 flex items-center justify-center bg-ink/60 p-4" @click.self="editTarget = null">
+        <section class="max-h-[90vh] w-full max-w-xl overflow-auto rounded-3xl bg-white p-5 shadow-2xl sm:p-7" role="dialog" aria-modal="true" aria-labelledby="editContentHeading">
+          <div class="flex items-start justify-between gap-4"><div><p class="text-xs font-bold uppercase tracking-[0.2em] text-brand">Content management</p><h2 id="editContentHeading" class="mt-2 text-xl font-semibold">Edit {{ editTarget.kind }}</h2><p class="mt-1 text-sm text-muted">Changes are saved to the API and appear in the learning outline.</p></div><button type="button" class="grid h-9 w-9 place-items-center rounded-xl border border-line text-muted hover:bg-canvas" aria-label="Close editor" @click="editTarget = null">×</button></div>
+          <form class="mt-5 space-y-4" @submit.prevent="saveEditedContent">
+            <div><label for="editContentTitle" class="mb-1.5 block text-sm font-semibold">Title</label><input id="editContentTitle" v-model="editTitle" required minlength="2" maxlength="140" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" /></div>
+            <div><label for="editContentSlug" class="mb-1.5 block text-sm font-semibold">URL slug</label><input id="editContentSlug" v-model="editSlug" required minlength="2" maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" /></div>
+            <div v-if="editTarget.kind !== 'lesson'"><label for="editContentDescription" class="mb-1.5 block text-sm font-semibold">Description</label><textarea id="editContentDescription" v-model="editDescription" rows="3" maxlength="10000" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" /></div>
+            <template v-if="editTarget.kind === 'lesson'">
+              <div><label for="editLessonType" class="mb-1.5 block text-sm font-semibold">Lesson type</label><select id="editLessonType" v-model="editLessonType" class="w-full rounded-xl border border-line bg-white px-3.5 py-3 text-sm"><option value="text">Text</option><option value="video">Video</option><option value="file">File / PDF / image</option></select></div>
+              <div v-if="editLessonType === 'text'"><label for="editLessonContent" class="mb-1.5 block text-sm font-semibold">Lesson content</label><textarea id="editLessonContent" v-model="editLessonContent" required maxlength="50000" rows="7" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm leading-6 outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" /></div>
+              <div v-else><label for="editLessonAsset" class="mb-1.5 block text-sm font-semibold">Ready media asset ID</label><input id="editLessonAsset" v-model="editMediaAssetId" required class="w-full rounded-xl border border-line px-3.5 py-3 font-mono text-xs outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" /><p class="mt-1 text-xs text-muted">Use an asset that is ready and belongs to this topic.</p></div>
+              <div><label for="editLessonDuration" class="mb-1.5 block text-sm font-semibold">Duration (seconds)</label><input id="editLessonDuration" v-model.number="editDuration" type="number" min="0" max="86400" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand" /></div>
+              <label class="flex items-center gap-2 text-sm text-muted"><input v-model="editPreview" type="checkbox" class="h-4 w-4 rounded border-line accent-brand" /> Allow preview without enrolment</label>
+            </template>
+            <div><label for="editContentOrder" class="mb-1.5 block text-sm font-semibold">Display order</label><input id="editContentOrder" v-model.number="editSortOrder" type="number" min="0" max="1000000" class="w-full rounded-xl border border-line px-3.5 py-3 text-sm outline-none focus:border-brand" /><p class="mt-1 text-xs text-muted">Lower numbers appear first.</p></div>
+            <div class="flex gap-3 pt-2"><button type="submit" :disabled="saving" class="flex-1 rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">{{ saving ? 'Saving…' : 'Save changes' }}</button><button type="button" class="rounded-xl border border-line px-4 py-3 text-sm font-semibold text-muted" @click="editTarget = null">Cancel</button></div>
+          </form>
         </section>
       </div>
 
