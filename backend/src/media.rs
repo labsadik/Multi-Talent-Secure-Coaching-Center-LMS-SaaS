@@ -625,11 +625,11 @@ pub async fn bunny_stream_webhook(
 
     let assets = state.db.collection::<Document>("assets");
     let status = match event.status {
-        0 | 1 | 2 | 4 | 7 => Some("processing"),
-        3 => Some("ready"),
+        0 | 1 | 2 | 7 => Some("processing"),
+        3 | 4 => Some("ready"),
         5 | 8 => Some("failed"),
         6 => Some("uploading"),
-        // Caption/metadata events must not downgrade a video that is already ready.
+        // Caption/metadata events must not change an already tracked playback state.
         9 | 10 => None,
         _ => None,
     };
