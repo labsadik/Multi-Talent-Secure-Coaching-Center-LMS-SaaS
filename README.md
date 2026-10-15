@@ -13,9 +13,9 @@ Newage is designed for a two-sided business:
 
 The current MVP supports company workspaces and centre-level course sales. **It does not yet include automated platform subscription billing, automatic revenue sharing, or split payouts.** The platform operator's fee and any commercial terms between the parties must be handled separately. See [LICENSE](LICENSE) for the rules that apply to this repository.
 
-## Screenshots
+## Demo screenshots
 
-These screenshots show the current product interface. A live demo URL has not been supplied yet.
+The screenshots below show the current product interface.
 
 <p align="center">
   <img src="https://ik.imagekit.io/xvqovhmcyr/lms/Newage%20_%20Learning,%20organised%20-%20Google%20Chrome%2010_15_2026%204_54_08%20PM.png" alt="Newage interface screenshot 1" width="48%" />
