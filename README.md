@@ -64,7 +64,7 @@ For session behavior and frontend setup, see [frontend/README.md](frontend/READM
 - Backend: cargo fmt --all, cargo test --all-targets, cargo clippy --all-targets, cargo build --release, and API smoke tests against a disposable database.
 - Frontend: npm run typecheck and npm run build from frontend/; GitHub Actions runs both.
 
-This repository is a development foundation. Provider sandbox verification, operational monitoring, atomic quota enforcement, production secrets/TLS/backups, and production security/load reviews are required before public launch.
+This repository is a development foundation. Provider sandbox verification, operational monitoring, production secrets/TLS/backups, and production security/load reviews are required before public launch.
 
 
 ## Company-specific employee login
