@@ -491,6 +491,7 @@ async fn organize_simple_lesson_asset(
     lesson_id: &ObjectId,
     lesson_title: &str,
     lesson_slug: &str,
+    update_stream_metadata: bool,
 ) -> AppResult<(Option<String>, Option<String>)> {
     let company_slug = company.get_str("slug").map_err(|_| AppError::Internal)?;
     let course_slug = course.get_str("slug").map_err(|_| AppError::Internal)?;
@@ -541,7 +542,9 @@ async fn organize_simple_lesson_asset(
                 }
             };
             // Use the lesson title itself for Bunny's video title; the collection carries the hierarchy.
-            stream.update_video(&video_id, lesson_title, &collection_id).await?;
+            if update_stream_metadata {
+                stream.update_video(&video_id, lesson_title, &collection_id).await?;
+            }
             Ok((None, Some(collection_id)))
         }
         _ => Ok((None, None)),
@@ -782,7 +785,7 @@ pub async fn create_lesson(
         if let Some(asset) = asset_for_lesson.as_ref() {
             let (storage_path, collection_id) = organize_simple_lesson_asset(
                 &state, &auth.company_id, &company, &course, &subject, &topic,
-                asset, &lesson_id, &title, &slug,
+                asset, &lesson_id, &title, &slug, false,
             ).await?;
             pending_storage_move = storage_path.map(|target| (
                 asset.get_str("storagePath").unwrap_or_default().to_owned(),
@@ -1116,7 +1119,7 @@ pub async fn update_lesson(
         if let Some(asset) = target_asset.as_ref() {
             let (storage_path, collection_id) = organize_simple_lesson_asset(
                 &state, &auth.company_id, &company, &course, &subject, &topic,
-                asset, &lesson_id, &title, &slug,
+                asset, &lesson_id, &title, &slug, true,
             ).await?;
             target_storage_path = storage_path;
             target_collection_id = collection_id;
@@ -1138,7 +1141,7 @@ pub async fn update_lesson(
         if let Some(previous_id) = previous_asset_id {
             assets.update_one(
                 doc! { "_id": previous_id, "companyId": auth.company_id.clone(), "lessonId": lesson_id.clone() },
-                doc! { "$unset": { "lessonId": "", "updatedAt": "" } },
+                doc! { "$unset": { "lessonId": "" }, "$set": { "updatedAt": DateTime::now() } },
             ).await?;
         }
     }
