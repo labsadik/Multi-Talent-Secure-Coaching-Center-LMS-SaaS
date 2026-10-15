@@ -799,3 +799,297 @@ pub async fn delete_lesson(
     ).await?;
     Ok(StatusCode::NO_CONTENT)
 }
+
+
+pub async fn list_chapters(
+    State(state): State<AppState>,
+    Path(topic_id): Path<String>,
+    auth: AuthUser,
+) -> AppResult<Json<Vec<ContentResponse>>> {
+    let topic_id = parse_id(&topic_id)?;
+    let topic = state.db.collection::<Document>("topics").find_one(doc! {
+        "_id": topic_id.clone(), "companyId": auth.company_id.clone(),
+        "deletedAt": { "$exists": false },
+    }).await?.ok_or(AppError::NotFound)?;
+    let course_id = topic.get_object_id("courseId").map_err(|_| AppError::Internal)?.to_owned();
+    visible_course(&state, &auth.company_id, &course_id, auth.can_manage_content()).await?;
+    let items = load_list(
+        &state.db.collection::<Document>("chapters"),
+        doc! {
+            "companyId": auth.company_id.clone(), "topicId": topic_id,
+            "status": "active", "deletedAt": { "$exists": false },
+        },
+    ).await?;
+    Ok(Json(items))
+}
+
+pub async fn create_chapter(
+    State(state): State<AppState>,
+    Path(topic_id): Path<String>,
+    auth: AuthUser,
+    Json(input): Json<CreateTopicRequest>,
+) -> AppResult<(StatusCode, Json<ContentResponse>)> {
+    if !auth.can_manage_content() { return Err(AppError::Forbidden); }
+    let topic_id = parse_id(&topic_id)?;
+    let topic = state.db.collection::<Document>("topics").find_one(doc! {
+        "_id": topic_id.clone(), "companyId": auth.company_id.clone(),
+        "deletedAt": { "$exists": false },
+    }).await?.ok_or(AppError::NotFound)?;
+    let course_id = topic.get_object_id("courseId").map_err(|_| AppError::Internal)?.to_owned();
+    let subject_id = topic.get_object_id("subjectId").map_err(|_| AppError::Internal)?.to_owned();
+    visible_course(&state, &auth.company_id, &course_id, true).await?;
+
+    let title = input.title.trim().to_owned();
+    let slug = input.slug.trim().to_ascii_lowercase();
+    let description = input.description.map(|value| value.trim().to_owned());
+    let sort_order = input.sort_order.unwrap_or(0);
+    if !valid_title_slug(&title, &slug) || !validate_optional_fields(&description, sort_order) {
+        return Err(AppError::BadRequest("invalid chapter title, slug, description, or order"));
+    }
+    let chapters = state.db.collection::<Document>("chapters");
+    if chapters.find_one(doc! {
+        "companyId": auth.company_id.clone(), "topicId": topic_id.clone(),
+        "slug": &slug, "deletedAt": { "$exists": false },
+    }).await?.is_some() {
+        return Err(AppError::Conflict("chapter slug is already in use in this part"));
+    }
+    let now = DateTime::now();
+    let document = doc! {
+        "_id": ObjectId::new(), "companyId": auth.company_id.clone(),
+        "courseId": course_id, "subjectId": subject_id, "topicId": topic_id,
+        "title": title, "slug": slug, "description": description,
+        "status": "active", "sortOrder": sort_order,
+        "createdBy": auth.user_id.clone(), "createdAt": now, "updatedAt": now,
+    };
+    chapters.insert_one(document.clone()).await.map_err(AppError::from_mongo)?;
+    Ok((StatusCode::CREATED, Json(content_response(document)?)))
+}
+
+pub async fn update_chapter(
+    State(state): State<AppState>,
+    Path(chapter_id): Path<String>,
+    auth: AuthUser,
+    Json(input): Json<CreateTopicRequest>,
+) -> AppResult<Json<ContentResponse>> {
+    if !auth.can_manage_content() { return Err(AppError::Forbidden); }
+    let chapter_id = parse_id(&chapter_id)?;
+    let chapters = state.db.collection::<Document>("chapters");
+    let filter = doc! {
+        "_id": chapter_id.clone(), "companyId": auth.company_id.clone(),
+        "deletedAt": { "$exists": false },
+    };
+    let current = chapters.find_one(filter.clone()).await?.ok_or(AppError::NotFound)?;
+    let course_id = current.get_object_id("courseId").map_err(|_| AppError::Internal)?.to_owned();
+    let topic_id = current.get_object_id("topicId").map_err(|_| AppError::Internal)?.to_owned();
+    visible_course(&state, &auth.company_id, &course_id, true).await?;
+    let title = input.title.trim().to_owned();
+    let slug = input.slug.trim().to_ascii_lowercase();
+    let description = input.description.map(|value| value.trim().to_owned());
+    let sort_order = input.sort_order.unwrap_or(current.get_i32("sortOrder").unwrap_or(0));
+    if !valid_title_slug(&title, &slug) || !validate_optional_fields(&description, sort_order) {
+        return Err(AppError::BadRequest("invalid chapter title, slug, description, or order"));
+    }
+    if chapters.find_one(doc! {
+        "companyId": auth.company_id.clone(), "topicId": topic_id.clone(),
+        "slug": &slug, "_id": { "$ne": chapter_id.clone() },
+        "deletedAt": { "$exists": false },
+    }).await?.is_some() {
+        return Err(AppError::Conflict("chapter slug is already in use in this part"));
+    }
+    chapters.update_one(filter.clone(), doc! { "$set": {
+        "title": &title, "slug": &slug, "description": description,
+        "sortOrder": sort_order, "updatedAt": DateTime::now(),
+    } }).await?;
+    Ok(Json(content_response(chapters.find_one(filter).await?.ok_or(AppError::NotFound)?)?))
+}
+
+pub async fn delete_chapter(
+    State(state): State<AppState>,
+    Path(chapter_id): Path<String>,
+    auth: AuthUser,
+) -> AppResult<StatusCode> {
+    if !auth.can_manage_content() { return Err(AppError::Forbidden); }
+    let chapter_id = parse_id(&chapter_id)?;
+    let chapters = state.db.collection::<Document>("chapters");
+    let filter = doc! {
+        "_id": chapter_id.clone(), "companyId": auth.company_id.clone(),
+        "deletedAt": { "$exists": false },
+    };
+    let chapter = chapters.find_one(filter.clone()).await?.ok_or(AppError::NotFound)?;
+    let course_id = chapter.get_object_id("courseId").map_err(|_| AppError::Internal)?.to_owned();
+    visible_course(&state, &auth.company_id, &course_id, true).await?;
+    let now = DateTime::now();
+    chapters.update_one(filter, doc! { "$set": {
+        "status": "archived", "deletedAt": now, "updatedAt": now,
+    } }).await?;
+    let child_filter = doc! {
+        "companyId": auth.company_id.clone(), "courseId": course_id,
+        "chapterId": chapter_id.clone(), "deletedAt": { "$exists": false },
+    };
+    archive_content_collection(&state, "chapter_parts", child_filter.clone(), now).await?;
+    archive_content_collection(&state, "lessons", child_filter, now).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn list_chapter_parts(
+    State(state): State<AppState>,
+    Path(chapter_id): Path<String>,
+    auth: AuthUser,
+) -> AppResult<Json<Vec<ContentResponse>>> {
+    let chapter_id = parse_id(&chapter_id)?;
+    let chapter = state.db.collection::<Document>("chapters").find_one(doc! {
+        "_id": chapter_id.clone(), "companyId": auth.company_id.clone(),
+        "status": "active", "deletedAt": { "$exists": false },
+    }).await?.ok_or(AppError::NotFound)?;
+    let course_id = chapter.get_object_id("courseId").map_err(|_| AppError::Internal)?.to_owned();
+    visible_course(&state, &auth.company_id, &course_id, auth.can_manage_content()).await?;
+    let items = load_list(
+        &state.db.collection::<Document>("chapter_parts"),
+        doc! {
+            "companyId": auth.company_id.clone(), "chapterId": chapter_id,
+            "status": "active", "deletedAt": { "$exists": false },
+        },
+    ).await?;
+    Ok(Json(items))
+}
+
+pub async fn create_chapter_part(
+    State(state): State<AppState>,
+    Path(chapter_id): Path<String>,
+    auth: AuthUser,
+    Json(input): Json<CreateTopicRequest>,
+) -> AppResult<(StatusCode, Json<ContentResponse>)> {
+    if !auth.can_manage_content() { return Err(AppError::Forbidden); }
+    let chapter_id = parse_id(&chapter_id)?;
+    let chapter = state.db.collection::<Document>("chapters").find_one(doc! {
+        "_id": chapter_id.clone(), "companyId": auth.company_id.clone(),
+        "status": "active", "deletedAt": { "$exists": false },
+    }).await?.ok_or(AppError::NotFound)?;
+    let course_id = chapter.get_object_id("courseId").map_err(|_| AppError::Internal)?.to_owned();
+    let subject_id = chapter.get_object_id("subjectId").map_err(|_| AppError::Internal)?.to_owned();
+    let topic_id = chapter.get_object_id("topicId").map_err(|_| AppError::Internal)?.to_owned();
+    visible_course(&state, &auth.company_id, &course_id, true).await?;
+    let title = input.title.trim().to_owned();
+    let slug = input.slug.trim().to_ascii_lowercase();
+    let description = input.description.map(|value| value.trim().to_owned());
+    let sort_order = input.sort_order.unwrap_or(0);
+    if !valid_title_slug(&title, &slug) || !validate_optional_fields(&description, sort_order) {
+        return Err(AppError::BadRequest("invalid content-part title, slug, description, or order"));
+    }
+    let parts = state.db.collection::<Document>("chapter_parts");
+    if parts.find_one(doc! {
+        "companyId": auth.company_id.clone(), "chapterId": chapter_id.clone(),
+        "slug": &slug, "deletedAt": { "$exists": false },
+    }).await?.is_some() {
+        return Err(AppError::Conflict("part slug is already in use in this chapter"));
+    }
+    let now = DateTime::now();
+    let document = doc! {
+        "_id": ObjectId::new(), "companyId": auth.company_id.clone(),
+        "courseId": course_id, "subjectId": subject_id, "topicId": topic_id,
+        "chapterId": chapter_id, "title": title, "slug": slug,
+        "description": description, "status": "active", "sortOrder": sort_order,
+        "createdBy": auth.user_id.clone(), "createdAt": now, "updatedAt": now,
+    };
+    parts.insert_one(document.clone()).await.map_err(AppError::from_mongo)?;
+    Ok((StatusCode::CREATED, Json(content_response(document)?)))
+}
+
+pub async fn update_chapter_part(
+    State(state): State<AppState>,
+    Path(part_id): Path<String>,
+    auth: AuthUser,
+    Json(input): Json<CreateTopicRequest>,
+) -> AppResult<Json<ContentResponse>> {
+    if !auth.can_manage_content() { return Err(AppError::Forbidden); }
+    let part_id = parse_id(&part_id)?;
+    let parts = state.db.collection::<Document>("chapter_parts");
+    let filter = doc! {
+        "_id": part_id.clone(), "companyId": auth.company_id.clone(),
+        "deletedAt": { "$exists": false },
+    };
+    let current = parts.find_one(filter.clone()).await?.ok_or(AppError::NotFound)?;
+    let course_id = current.get_object_id("courseId").map_err(|_| AppError::Internal)?.to_owned();
+    let chapter_id = current.get_object_id("chapterId").map_err(|_| AppError::Internal)?.to_owned();
+    visible_course(&state, &auth.company_id, &course_id, true).await?;
+    let title = input.title.trim().to_owned();
+    let slug = input.slug.trim().to_ascii_lowercase();
+    let description = input.description.map(|value| value.trim().to_owned());
+    let sort_order = input.sort_order.unwrap_or(current.get_i32("sortOrder").unwrap_or(0));
+    if !valid_title_slug(&title, &slug) || !validate_optional_fields(&description, sort_order) {
+        return Err(AppError::BadRequest("invalid content-part title, slug, description, or order"));
+    }
+    if parts.find_one(doc! {
+        "companyId": auth.company_id.clone(), "chapterId": chapter_id.clone(),
+        "slug": &slug, "_id": { "$ne": part_id.clone() },
+        "deletedAt": { "$exists": false },
+    }).await?.is_some() {
+        return Err(AppError::Conflict("part slug is already in use in this chapter"));
+    }
+    parts.update_one(filter.clone(), doc! { "$set": {
+        "title": &title, "slug": &slug, "description": description,
+        "sortOrder": sort_order, "updatedAt": DateTime::now(),
+    } }).await?;
+    Ok(Json(content_response(parts.find_one(filter).await?.ok_or(AppError::NotFound)?)?))
+}
+
+pub async fn delete_chapter_part(
+    State(state): State<AppState>,
+    Path(part_id): Path<String>,
+    auth: AuthUser,
+) -> AppResult<StatusCode> {
+    if !auth.can_manage_content() { return Err(AppError::Forbidden); }
+    let part_id = parse_id(&part_id)?;
+    let parts = state.db.collection::<Document>("chapter_parts");
+    let filter = doc! {
+        "_id": part_id.clone(), "companyId": auth.company_id.clone(),
+        "deletedAt": { "$exists": false },
+    };
+    let part = parts.find_one(filter.clone()).await?.ok_or(AppError::NotFound)?;
+    let course_id = part.get_object_id("courseId").map_err(|_| AppError::Internal)?.to_owned();
+    visible_course(&state, &auth.company_id, &course_id, true).await?;
+    let now = DateTime::now();
+    parts.update_one(filter, doc! { "$set": {
+        "status": "archived", "deletedAt": now, "updatedAt": now,
+    } }).await?;
+    archive_content_collection(&state, "lessons", doc! {
+        "companyId": auth.company_id.clone(), "courseId": course_id,
+        "chapterPartId": part_id, "deletedAt": { "$exists": false },
+    }, now).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn list_chapter_part_lessons(
+    State(state): State<AppState>,
+    Path(part_id): Path<String>,
+    auth: AuthUser,
+) -> AppResult<Json<Vec<ContentResponse>>> {
+    let part_id = parse_id(&part_id)?;
+    let part = state.db.collection::<Document>("chapter_parts").find_one(doc! {
+        "_id": part_id.clone(), "companyId": auth.company_id.clone(),
+        "status": "active", "deletedAt": { "$exists": false },
+    }).await?.ok_or(AppError::NotFound)?;
+    let topic_id = part.get_object_id("topicId").map_err(|_| AppError::Internal)?.to_owned();
+    let Json(mut lessons) = list_lessons(State(state), Path(topic_id.to_hex()), auth).await?;
+    let part_hex = part_id.to_hex();
+    lessons.retain(|lesson| lesson.chapter_part_id.as_deref() == Some(part_hex.as_str()));
+    Ok(Json(lessons))
+}
+
+pub async fn create_chapter_part_lesson(
+    State(state): State<AppState>,
+    Path(part_id): Path<String>,
+    auth: AuthUser,
+    Json(mut input): Json<CreateLessonRequest>,
+) -> AppResult<(StatusCode, Json<ContentResponse>)> {
+    let part_id = parse_id(&part_id)?;
+    let part = state.db.collection::<Document>("chapter_parts").find_one(doc! {
+        "_id": part_id.clone(), "companyId": auth.company_id.clone(),
+        "status": "active", "deletedAt": { "$exists": false },
+    }).await?.ok_or(AppError::NotFound)?;
+    let topic_id = part.get_object_id("topicId").map_err(|_| AppError::Internal)?.to_owned();
+    let chapter_id = part.get_object_id("chapterId").map_err(|_| AppError::Internal)?.to_owned();
+    input.chapter_id = Some(chapter_id.to_hex());
+    input.chapter_part_id = Some(part_id.to_hex());
+    create_lesson(State(state), Path(topic_id.to_hex()), auth, Json(input)).await
+}
