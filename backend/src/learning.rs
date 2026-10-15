@@ -44,6 +44,7 @@ pub struct CreateLessonRequest {
     pub sort_order: Option<i32>,
     pub chapter_id: Option<String>,
     pub chapter_part_id: Option<String>,
+    pub thumbnail_url: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -61,6 +62,7 @@ pub struct ContentResponse {
     topic_id: Option<String>,
     chapter_id: Option<String>,
     chapter_part_id: Option<String>,
+    thumbnail_url: Option<String>,
     lesson_type: Option<String>,
     content: Option<String>,
     media_asset_id: Option<String>,
@@ -149,6 +151,7 @@ fn content_response(document: Document) -> AppResult<ContentResponse> {
         topic_id: id_field("topicId"),
         chapter_id: id_field("chapterId"),
         chapter_part_id: id_field("chapterPartId"),
+        thumbnail_url: document.get_str("thumbnailUrl").ok().map(str::to_owned),
         lesson_type: document.get_str("lessonType").ok().map(str::to_owned),
         content: document.get_str("content").ok().map(str::to_owned),
         media_asset_id: id_field("mediaAssetId"),
@@ -423,6 +426,10 @@ pub async fn create_lesson(
     let media_asset_id = input.media_asset_id.as_deref().map(parse_id).transpose()?;
     let chapter_id = input.chapter_id.as_deref().map(parse_id).transpose()?;
     let chapter_part_id = input.chapter_part_id.as_deref().map(parse_id).transpose()?;
+    let thumbnail_url = input.thumbnail_url.as_deref().map(str::trim).filter(|value| !value.is_empty()).map(str::to_owned);
+    if thumbnail_url.as_ref().is_some_and(|url| !url.starts_with("https://") || url.len() > 2048) {
+        return Err(AppError::BadRequest("lesson thumbnail must be an HTTPS URL"));
+    }
     if chapter_id.is_some() != chapter_part_id.is_some() {
         return Err(AppError::BadRequest("chapter and chapter-part IDs must be supplied together"));
     }
@@ -499,6 +506,7 @@ pub async fn create_lesson(
         "topicId": topic_id,
         "chapterId": chapter_id,
         "chapterPartId": chapter_part_id,
+        "thumbnailUrl": thumbnail_url,
         "title": title,
         "slug": slug,
         "lessonType": lesson_type,
@@ -712,6 +720,11 @@ pub async fn update_lesson(
         .or_else(|| current.get_object_id("chapterId").ok().cloned());
     let chapter_part_id = input.chapter_part_id.as_deref().map(parse_id).transpose()?
         .or_else(|| current.get_object_id("chapterPartId").ok().cloned());
+    let thumbnail_url = input.thumbnail_url.as_deref().map(str::trim).filter(|value| !value.is_empty()).map(str::to_owned)
+        .or_else(|| current.get_str("thumbnailUrl").ok().map(str::to_owned));
+    if thumbnail_url.as_ref().is_some_and(|url| !url.starts_with("https://") || url.len() > 2048) {
+        return Err(AppError::BadRequest("lesson thumbnail must be an HTTPS URL"));
+    }
     if chapter_id.is_some() != chapter_part_id.is_some() {
         return Err(AppError::BadRequest("chapter and chapter-part IDs must be supplied together"));
     }
@@ -774,6 +787,7 @@ pub async fn update_lesson(
         "title": &title, "slug": &slug, "lessonType": &lesson_type,
         "content": content, "mediaAssetId": media_asset_id,
         "chapterId": chapter_id, "chapterPartId": chapter_part_id,
+        "thumbnailUrl": thumbnail_url,
         "durationSeconds": duration_seconds, "isPreview": input.is_preview.unwrap_or(false),
         "sortOrder": sort_order, "updatedAt": DateTime::now(),
     } }).await?;
