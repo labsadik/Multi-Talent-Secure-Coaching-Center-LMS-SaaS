@@ -109,11 +109,11 @@ course_id="$(jq -er '.id | select(type == "string" and length > 0)' "$TMP_DIR/co
 assert_json "$TMP_DIR/course.json" '.status == "draft" and .title == "Tenant Isolation Smoke Course"' "course creation response is invalid"
 
 # A user in company B must not publish company A's course, even when its ID is known.
-http 404 "$BASE_URL/api/v1/courses/$course_id/publish" -H "Authorization: Bearer $token_b"
+http 404 "$BASE_URL/api/v1/courses/$course_id/publish" -X POST -H "Authorization: Bearer $token_b"
 cp "$TMP_DIR/body" "$TMP_DIR/cross-tenant.json"
 assert_json "$TMP_DIR/cross-tenant.json" '.error.code == "not_found"' "cross-tenant course access was not blocked"
 
-http 200 "$BASE_URL/api/v1/courses/$course_id/publish" -H "Authorization: Bearer $token_a"
+http 200 "$BASE_URL/api/v1/courses/$course_id/publish" -X POST -H "Authorization: Bearer $token_a"
 cp "$TMP_DIR/body" "$TMP_DIR/published.json"
 assert_json "$TMP_DIR/published.json" '.status == "published" and .id != null' "course publish failed for its owning tenant"
 
