@@ -471,6 +471,19 @@ pub async fn login(
 pub struct SlackLoginRequest {
     pub company_slug: String,
     pub code: String,
+    pub nonce: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct SlackIdTokenClaims {
+    iss: String,
+    aud: serde_json::Value,
+    exp: usize,
+    nonce: String,
+    email: String,
+    email_verified: bool,
+    #[serde(rename = "https://slack.com/team_id")]
+    team_id: String,
 }
 
 pub async fn slack_login(
@@ -479,7 +492,8 @@ pub async fn slack_login(
 ) -> AppResult<Json<AuthResponse>> {
     let company_slug = input.company_slug.trim().to_ascii_lowercase();
     let code = input.code.trim();
-    if !valid_slug(&company_slug) || code.is_empty() || code.len() > 4096 {
+    let nonce = input.nonce.trim();
+    if !valid_slug(&company_slug) || code.is_empty() || code.len() > 4096 || nonce.len() < 32 || nonce.len() > 256 {
         return Err(AppError::Unauthorized);
     }
 
@@ -523,20 +537,66 @@ pub async fn slack_login(
     if token_response.get("ok").and_then(serde_json::Value::as_bool) != Some(true) {
         return Err(AppError::Unauthorized);
     }
+    let id_token = token_response
+        .get("id_token")
+        .and_then(serde_json::Value::as_str)
+        .filter(|token| !token.is_empty())
+        .ok_or(AppError::Unauthorized)?;
+    let id_header = jsonwebtoken::decode_header(id_token).map_err(|_| AppError::Unauthorized)?;
+    if id_header.alg != Algorithm::RS256 {
+        return Err(AppError::Unauthorized);
+    }
+    let key_id = id_header.kid.as_deref().ok_or(AppError::Unauthorized)?;
+    let jwks: serde_json::Value = state
+        .http
+        .get("https://slack.com/openid/connect/keys")
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let key = jwks
+        .get("keys")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|keys| keys.iter().find(|key| {
+            key.get("kid").and_then(serde_json::Value::as_str) == Some(key_id)
+                && key.get("kty").and_then(serde_json::Value::as_str) == Some("RSA")
+                && key.get("alg").and_then(serde_json::Value::as_str).is_none_or(|alg| alg == "RS256")
+        }))
+        .ok_or(AppError::Unauthorized)?;
+    let modulus = key.get("n").and_then(serde_json::Value::as_str).ok_or(AppError::Unauthorized)?;
+    let exponent = key.get("e").and_then(serde_json::Value::as_str).ok_or(AppError::Unauthorized)?;
+    let decoding_key = DecodingKey::from_rsa_components(modulus, exponent).map_err(|_| AppError::Unauthorized)?;
+    let mut validation = Validation::new(Algorithm::RS256);
+    validation.set_issuer(&["https://slack.com"]);
+    validation.set_audience(&[client_id]);
+    validation.validate_exp = true;
+    let claims = decode::<SlackIdTokenClaims>(id_token, &decoding_key, &validation)
+        .map_err(|_| AppError::Unauthorized)?
+        .claims;
+    if claims.iss != "https://slack.com"
+        || claims.nonce != nonce
+        || !claims.email_verified
+        || claims.team_id != *expected_team
+        || !valid_email(&claims.email)
+    {
+        return Err(AppError::Unauthorized);
+    }
+
     let access_token = token_response
         .get("access_token")
         .and_then(serde_json::Value::as_str)
         .filter(|token| !token.is_empty())
         .ok_or(AppError::Unauthorized)?;
 
-    // Fetch verified identity from Slack rather than trusting identity data supplied
-    // by the browser or decoding an unverified token locally.
+    // Cross-check the user-info result against the verified, nonce-bound ID token.
     let identity: serde_json::Value = state
         .http
         .post("https://slack.com/api/openid.connect.userInfo")
         .bearer_auth(access_token)
         .send()
         .await?
+        .error_for_status()?
         .json()
         .await?;
     if identity.get("ok").and_then(serde_json::Value::as_bool) != Some(true) {
@@ -557,7 +617,7 @@ pub async fn slack_login(
         .get("https://slack.com/team_id")
         .and_then(serde_json::Value::as_str)
         .ok_or(AppError::Unauthorized)?;
-    if !email_verified || slack_team_id != expected_team {
+    if !email_verified || slack_team_id != expected_team || email != claims.email.to_ascii_lowercase() {
         return Err(AppError::Unauthorized);
     }
 
