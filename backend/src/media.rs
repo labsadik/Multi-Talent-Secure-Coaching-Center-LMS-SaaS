@@ -184,7 +184,7 @@ pub async fn create_video_ticket(
     }
 
     let topic_id = parse_path_id(&topic_id)?;
-    let (topic, subject, course, company) =
+    let (topic, subject, course, _company) =
         topic_context(&state, &auth.company_id, &topic_id).await?;
 
     let course_id = course
