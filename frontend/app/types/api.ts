@@ -97,6 +97,19 @@ export interface ContentItem {
   mediaAssetId?: string | null
   durationSeconds?: number | null
   isPreview?: boolean | null
+  thumbnailUrl?: string | null
+}
+export interface TopicAsset {
+  id: string
+  title: string
+  assetType: 'video' | 'image' | 'file' | string
+  provider: string
+  contentType?: string | null
+  status: string
+  sizeBytes: number
+  durationSeconds?: number | null
+  createdAtMs: number
+  publicUrl?: string | null
 }
 export interface CompanyUser {
   id: string
