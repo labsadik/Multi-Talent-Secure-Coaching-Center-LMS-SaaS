@@ -1249,9 +1249,12 @@ pub async fn permanently_delete_subject(
     };
     permanently_remove_lesson_progress(&state, &auth.company_id, subtree.clone()).await?;
     permanently_remove_assets(&state, &auth.company_id, subtree.clone()).await?;
-    for collection in ["lessons", "chapter_parts", "chapters", "topics", "subjects"] {
+    for collection in ["lessons", "chapter_parts", "chapters", "topics"] {
         state.db.collection::<Document>(collection).delete_many(subtree.clone()).await?;
     }
+    state.db.collection::<Document>("subjects").delete_one(doc! {
+        "_id": subject_id, "companyId": auth.company_id.clone(),
+    }).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1274,9 +1277,12 @@ pub async fn permanently_delete_topic(
     };
     permanently_remove_lesson_progress(&state, &auth.company_id, subtree.clone()).await?;
     permanently_remove_assets(&state, &auth.company_id, subtree.clone()).await?;
-    for collection in ["lessons", "chapter_parts", "chapters", "topics"] {
+    for collection in ["lessons", "chapter_parts", "chapters"] {
         state.db.collection::<Document>(collection).delete_many(subtree.clone()).await?;
     }
+    state.db.collection::<Document>("topics").delete_one(doc! {
+        "_id": topic_id, "companyId": auth.company_id.clone(),
+    }).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
