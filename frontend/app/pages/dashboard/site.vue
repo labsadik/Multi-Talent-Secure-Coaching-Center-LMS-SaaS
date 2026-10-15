@@ -2,8 +2,13 @@
 import type { CompanySiteReply, SiteSettings } from '~/types/api'
 import { apiErrorMessage } from '~/utils/api-error'
 
-definePageMeta({ middleware: 'auth' })
+definePageMeta({ middleware: ['auth', 'company-dashboard'], alias: ['/workspace/:companySlug/dashboard/site'] })
 
+const route = useRoute()
+function workspacePath(suffix = '') {
+  const slug = String(route.params.companySlug || currentCompany.value?.slug || '').trim()
+  return slug ? '/workspace/' + encodeURIComponent(slug) + '/dashboard' + suffix : '/dashboard' + suffix
+}
 const { currentUser, currentCompany, getCompanySite, updateCompanySite } = useAuth()
 const loading = ref(true)
 const saving = ref(false)
@@ -86,17 +91,17 @@ onMounted(() => { void load() })
   <div class="min-h-screen bg-canvas">
     <header class="sticky top-0 z-30 border-b border-line bg-white/95 backdrop-blur-xl">
       <div class="mx-auto flex h-[72px] max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
-        <NuxtLink to="/dashboard" class="inline-flex items-center gap-3 font-semibold"><span class="grid h-10 w-10 place-items-center rounded-2xl bg-brand text-lg font-black text-white">N</span>newage<span class="text-brand">.</span></NuxtLink>
+        <NuxtLink :to="workspacePath()" class="inline-flex items-center gap-3 font-semibold"><span class="grid h-10 w-10 place-items-center rounded-2xl bg-brand text-lg font-black text-white">N</span>newage<span class="text-brand">.</span></NuxtLink>
         <div class="flex items-center gap-2">
           <button type="button" class="rounded-xl border border-line px-3 py-2.5 text-xs font-semibold text-muted hover:bg-canvas sm:px-4 sm:text-sm" :disabled="!companySlug" @click="openPublicPage">View public page ↗</button>
-          <NuxtLink to="/dashboard" class="rounded-xl bg-brand px-3 py-2.5 text-xs font-semibold text-white hover:bg-brand-dark sm:px-4 sm:text-sm">Workspace</NuxtLink>
+          <NuxtLink :to="workspacePath()" class="rounded-xl bg-brand px-3 py-2.5 text-xs font-semibold text-white hover:bg-brand-dark sm:px-4 sm:text-sm">Workspace</NuxtLink>
         </div>
       </div>
       <nav class="mx-auto flex max-w-7xl items-center gap-2 overflow-x-auto px-4 pb-3 sm:px-6 lg:px-8" aria-label="Workspace sections">
-        <NuxtLink to="/dashboard" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-muted hover:bg-canvas">Courses</NuxtLink>
-        <NuxtLink to="/dashboard/site" class="shrink-0 rounded-lg bg-brand-soft px-3 py-2 text-xs font-semibold text-brand">Public site & theme</NuxtLink>
-        <NuxtLink to="/dashboard/settings" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-muted hover:bg-canvas">Payments & plans</NuxtLink>
-        <NuxtLink to="/dashboard/users" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-muted hover:bg-canvas">People</NuxtLink>
+        <NuxtLink :to="workspacePath()" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-muted hover:bg-canvas">Courses</NuxtLink>
+        <NuxtLink :to="workspacePath('/site')" class="shrink-0 rounded-lg bg-brand-soft px-3 py-2 text-xs font-semibold text-brand">Public site & theme</NuxtLink>
+        <NuxtLink :to="workspacePath('/settings')" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-muted hover:bg-canvas">Payments & plans</NuxtLink>
+        <NuxtLink :to="workspacePath('/users')" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-muted hover:bg-canvas">People</NuxtLink>
       </nav>
     </header>
 
