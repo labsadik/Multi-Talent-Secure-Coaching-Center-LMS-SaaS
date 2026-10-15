@@ -11,7 +11,7 @@ use crate::{
     auth::{hash_password, valid_email, AuthUser},
     error::{AppError, AppResult},
     state::AppState,
-    tenant::{ensure_learner_capacity, require_active_company},
+    tenant::require_active_company,
 };
 
 #[derive(Debug, Deserialize)]
@@ -144,10 +144,7 @@ pub async fn create_company_user(
     if auth.role == "instructor" && role != "learner" {
         return Err(AppError::Forbidden);
     }
-    let company = require_active_company(&state.db, &auth.company_id).await?;
-    if role == "learner" {
-        ensure_learner_capacity(&state, &company, &auth.company_id).await?;
-    }
+    require_active_company(&state.db, &auth.company_id).await?;
 
     let user_id = ObjectId::new();
     let now = DateTime::now();
@@ -183,7 +180,7 @@ pub async fn update_company_user(
     Json(input): Json<UpdateCompanyUserRequest>,
 ) -> AppResult<Json<CompanyUserResponse>> {
     require_user_manager(&auth)?;
-    let company = require_active_company(&state.db, &auth.company_id).await?;
+    require_active_company(&state.db, &auth.company_id).await?;
 
     let user_id =
         ObjectId::parse_str(&user_id).map_err(|_| AppError::BadRequest("invalid user ID"))?;
@@ -230,14 +227,6 @@ pub async fn update_company_user(
         if !matches!(status.trim().to_ascii_lowercase().as_str(), "active" | "disabled") {
             return Err(AppError::BadRequest("status must be active or disabled"));
         }
-    }
-
-    // A promotion or reactivation is subject to the same active-learner cap as registration.
-    if next_role == "learner"
-        && next_status == "active"
-        && !(target_role == "learner" && target_status == "active")
-    {
-        ensure_learner_capacity(&state, &company, &auth.company_id).await?;
     }
 
     let mut set_fields = doc! { "updatedAt": DateTime::now() };
