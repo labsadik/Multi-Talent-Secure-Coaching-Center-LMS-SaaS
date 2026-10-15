@@ -29,6 +29,8 @@ pub struct Settings {
     pub bunny_cdn_hostname: Option<String>,
     pub bunny_stream_library_id: Option<u64>,
     pub bunny_stream_api_key: Option<String>,
+    /// Read-only API key for verifying signed Bunny Stream webhooks.
+    pub bunny_stream_webhook_signing_key: Option<String>,
     pub razorpay_key_id: Option<String>,
     pub razorpay_key_secret: Option<String>,
     pub razorpay_webhook_secret: Option<String>,
@@ -203,6 +205,7 @@ impl Settings {
             "BUNNY_STREAM_LIBRARY_ID and BUNNY_STREAM_API_KEY must be configured together"
         );
         let bunny_stream_api_key = optional("BUNNY_STREAM_API_KEY");
+        let bunny_stream_webhook_signing_key = optional("BUNNY_STREAM_WEBHOOK_SIGNING_KEY");
         let bunny_tus_endpoint = optional("BUNNY_TUS_ENDPOINT")
             .unwrap_or_else(|| "https://video.bunnycdn.com/tusupload".to_owned());
         ensure!(
@@ -323,6 +326,7 @@ impl Settings {
             bunny_cdn_hostname,
             bunny_stream_library_id,
             bunny_stream_api_key,
+            bunny_stream_webhook_signing_key,
             razorpay_key_id,
             razorpay_key_secret,
             razorpay_webhook_secret,
