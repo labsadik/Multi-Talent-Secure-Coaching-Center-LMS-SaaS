@@ -5,6 +5,7 @@ definePageMeta({ layout: 'auth', middleware: 'guest' })
 
 const route = useRoute()
 const { login } = useAuth()
+const route = useRoute()
 const companySlug = ref('')
 const email = ref('')
 const password = ref('')
@@ -16,6 +17,10 @@ function loginResponsePath() {
   const requested = typeof route.query.redirect === 'string' ? route.query.redirect : '/dashboard'
   return requested.startsWith('/') && !requested.startsWith('//') ? requested : '/dashboard'
 }
+
+onMounted(() => {
+  if (typeof route.query.companySlug === 'string') companySlug.value = route.query.companySlug
+})
 
 async function submitLogin() {
   pending.value = true
