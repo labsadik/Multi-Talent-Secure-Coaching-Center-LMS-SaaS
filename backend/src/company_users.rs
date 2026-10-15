@@ -169,7 +169,7 @@ pub async fn update_company_user(
     Json(input): Json<UpdateCompanyUserRequest>,
 ) -> AppResult<Json<CompanyUserResponse>> {
     require_admin(&auth)?;
-    require_active_company(&state.db, &auth.company_id).await?;
+    let company = require_active_company(&state.db, &auth.company_id).await?;
 
     let user_id =
         ObjectId::parse_str(&user_id).map_err(|_| AppError::BadRequest("invalid user ID"))?;
@@ -186,28 +186,50 @@ pub async fn update_company_user(
         .await?
         .ok_or(AppError::NotFound)?;
     let target_role = target.get_str("role").unwrap_or_default();
+    let target_status = target.get_str("status").unwrap_or("active");
     if target_role == "owner" || (target_role == "admin" && auth.role != "owner") {
         return Err(AppError::Forbidden);
     }
 
-    let mut set_fields = doc! { "updatedAt": DateTime::now() };
-    if let Some(role) = input.role {
-        let role = role.trim().to_ascii_lowercase();
-        if !matches!(role.as_str(), "admin" | "instructor" | "learner") {
+    let next_role = input
+        .role
+        .as_ref()
+        .map(|role| role.trim().to_ascii_lowercase())
+        .unwrap_or_else(|| target_role.to_owned());
+    let next_status = input
+        .status
+        .as_ref()
+        .map(|status| status.trim().to_ascii_lowercase())
+        .unwrap_or_else(|| target_status.to_owned());
+
+    if let Some(role) = &input.role {
+        if !matches!(role.trim().to_ascii_lowercase().as_str(), "admin" | "instructor" | "learner") {
             return Err(AppError::BadRequest("role must be admin, instructor, or learner"));
         }
-        if role == "admin" && auth.role != "owner" {
+        if role.trim().eq_ignore_ascii_case("admin") && auth.role != "owner" {
             return Err(AppError::Forbidden);
         }
-        set_fields.insert("role", role);
     }
-
-    if let Some(status) = input.status {
-        let status = status.trim().to_ascii_lowercase();
-        if !matches!(status.as_str(), "active" | "disabled") {
+    if let Some(status) = &input.status {
+        if !matches!(status.trim().to_ascii_lowercase().as_str(), "active" | "disabled") {
             return Err(AppError::BadRequest("status must be active or disabled"));
         }
-        set_fields.insert("status", status);
+    }
+
+    // A promotion or reactivation is subject to the same active-learner cap as registration.
+    if next_role == "learner"
+        && next_status == "active"
+        && !(target_role == "learner" && target_status == "active")
+    {
+        ensure_learner_capacity(&state, &company, &auth.company_id).await?;
+    }
+
+    let mut set_fields = doc! { "updatedAt": DateTime::now() };
+    if let Some(role) = input.role {
+        set_fields.insert("role", role.trim().to_ascii_lowercase());
+    }
+    if let Some(status) = input.status {
+        set_fields.insert("status", status.trim().to_ascii_lowercase());
     }
 
     if set_fields.len() == 1 {
@@ -235,4 +257,3 @@ pub async fn update_company_user(
 
     Ok(Json(user_response(updated)?))
 }
-
