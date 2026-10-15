@@ -179,6 +179,26 @@ impl BunnyStream {
         Ok(())
     }
 
+    /// Permanently removes one video from this library.
+    pub async fn delete_video(&self, video_id: &str) -> AppResult<()> {
+        if video_id.is_empty()
+            || video_id.len() > 128
+            || !video_id.chars().all(|ch| ch.is_ascii_alphanumeric() || "-_".contains(ch))
+        {
+            return Err(AppError::BadRequest("invalid Bunny video ID"));
+        }
+        self.client
+            .delete(format!(
+                "https://video.bunnycdn.com/library/{}/videos/{}",
+                self.library_id, video_id
+            ))
+            .header("AccessKey", &self.api_key)
+            .send()
+            .await?
+            .error_for_status()?;
+        Ok(())
+    }
+
     /// Creates a video record in the shared Stream library.
     /// Persist the returned GUID with companyId/courseId/subjectId/topicId in MongoDB.
     pub async fn create_video(
