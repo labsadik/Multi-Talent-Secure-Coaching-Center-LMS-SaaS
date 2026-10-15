@@ -42,6 +42,8 @@ pub struct CreateLessonRequest {
     pub duration_seconds: Option<i64>,
     pub is_preview: Option<bool>,
     pub sort_order: Option<i32>,
+    pub chapter_id: Option<String>,
+    pub chapter_part_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -57,6 +59,8 @@ pub struct ContentResponse {
     course_id: Option<String>,
     subject_id: Option<String>,
     topic_id: Option<String>,
+    chapter_id: Option<String>,
+    chapter_part_id: Option<String>,
     lesson_type: Option<String>,
     content: Option<String>,
     media_asset_id: Option<String>,
@@ -143,6 +147,8 @@ fn content_response(document: Document) -> AppResult<ContentResponse> {
         course_id: id_field("courseId"),
         subject_id: id_field("subjectId"),
         topic_id: id_field("topicId"),
+        chapter_id: id_field("chapterId"),
+        chapter_part_id: id_field("chapterPartId"),
         lesson_type: document.get_str("lessonType").ok().map(str::to_owned),
         content: document.get_str("content").ok().map(str::to_owned),
         media_asset_id: id_field("mediaAssetId"),
@@ -415,6 +421,25 @@ pub async fn create_lesson(
     let duration_seconds = input.duration_seconds.unwrap_or(0);
     let sort_order = input.sort_order.unwrap_or(0);
     let media_asset_id = input.media_asset_id.as_deref().map(parse_id).transpose()?;
+    let chapter_id = input.chapter_id.as_deref().map(parse_id).transpose()?;
+    let chapter_part_id = input.chapter_part_id.as_deref().map(parse_id).transpose()?;
+    if chapter_id.is_some() != chapter_part_id.is_some() {
+        return Err(AppError::BadRequest("chapter and chapter-part IDs must be supplied together"));
+    }
+    if let (Some(chapter_id), Some(chapter_part_id)) = (&chapter_id, &chapter_part_id) {
+        let chapter = state.db.collection::<Document>("chapters").find_one(doc! {
+            "_id": chapter_id.clone(), "companyId": auth.company_id.clone(),
+            "courseId": course_id.clone(), "subjectId": subject_id.clone(),
+            "topicId": topic_id.clone(), "deletedAt": { "$exists": false },
+        }).await?.ok_or(AppError::BadRequest("chapter does not belong to this course part"))?;
+        let _ = chapter;
+        state.db.collection::<Document>("chapter_parts").find_one(doc! {
+            "_id": chapter_part_id.clone(), "companyId": auth.company_id.clone(),
+            "courseId": course_id.clone(), "subjectId": subject_id.clone(),
+            "topicId": topic_id.clone(), "chapterId": chapter_id.clone(),
+            "deletedAt": { "$exists": false },
+        }).await?.ok_or(AppError::BadRequest("chapter part does not belong to this chapter"))?;
+    }
 
     if !valid_title_slug(&title, &slug)
         || !matches!(lesson_type.as_str(), "video" | "text" | "file")
@@ -472,6 +497,8 @@ pub async fn create_lesson(
         "courseId": course_id,
         "subjectId": subject_id,
         "topicId": topic_id,
+        "chapterId": chapter_id,
+        "chapterPartId": chapter_part_id,
         "title": title,
         "slug": slug,
         "lessonType": lesson_type,
@@ -677,6 +704,26 @@ pub async fn update_lesson(
     let duration_seconds = input.duration_seconds.unwrap_or(0);
     let sort_order = input.sort_order.unwrap_or(current.get_i32("sortOrder").unwrap_or(0));
     let media_asset_id = input.media_asset_id.as_deref().map(parse_id).transpose()?;
+    let chapter_id = input.chapter_id.as_deref().map(parse_id).transpose()?
+        .or_else(|| current.get_object_id("chapterId").ok().cloned());
+    let chapter_part_id = input.chapter_part_id.as_deref().map(parse_id).transpose()?
+        .or_else(|| current.get_object_id("chapterPartId").ok().cloned());
+    if chapter_id.is_some() != chapter_part_id.is_some() {
+        return Err(AppError::BadRequest("chapter and chapter-part IDs must be supplied together"));
+    }
+    if let (Some(chapter_id), Some(chapter_part_id)) = (&chapter_id, &chapter_part_id) {
+        state.db.collection::<Document>("chapters").find_one(doc! {
+            "_id": chapter_id.clone(), "companyId": auth.company_id.clone(),
+            "courseId": course_id.clone(), "subjectId": subject_id.clone(),
+            "topicId": topic_id.clone(), "deletedAt": { "$exists": false },
+        }).await?.ok_or(AppError::BadRequest("chapter does not belong to this course part"))?;
+        state.db.collection::<Document>("chapter_parts").find_one(doc! {
+            "_id": chapter_part_id.clone(), "companyId": auth.company_id.clone(),
+            "courseId": course_id.clone(), "subjectId": subject_id.clone(),
+            "topicId": topic_id.clone(), "chapterId": chapter_id.clone(),
+            "deletedAt": { "$exists": false },
+        }).await?.ok_or(AppError::BadRequest("chapter part does not belong to this chapter"))?;
+    }
     if !valid_title_slug(&title, &slug)
         || !matches!(lesson_type.as_str(), "video" | "text" | "file")
         || !(0..=86_400).contains(&duration_seconds)
@@ -722,6 +769,7 @@ pub async fn update_lesson(
     lessons.update_one(filter.clone(), doc! { "$set": {
         "title": &title, "slug": &slug, "lessonType": &lesson_type,
         "content": content, "mediaAssetId": media_asset_id,
+        "chapterId": chapter_id, "chapterPartId": chapter_part_id,
         "durationSeconds": duration_seconds, "isPreview": input.is_preview.unwrap_or(false),
         "sortOrder": sort_order, "updatedAt": DateTime::now(),
     } }).await?;
