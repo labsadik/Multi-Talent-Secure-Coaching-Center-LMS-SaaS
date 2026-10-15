@@ -8,7 +8,8 @@ This is the Rust backend foundation for the multi-tenant Newage LMS SaaS. The Nu
 - Centralized configuration loaded from environment variables and a local .env via dotenvy. Process environment variables take precedence.
 - MongoDB connection pooling and unique indexes for company slugs, company-scoped users, and company-scoped course slugs.
 - Company registration, password hashing with Argon2, tenant-scoped login, short-lived JWT access tokens with issuer/audience validation, and /auth/me.
-- Tenant-aware draft course creation/listing. All course queries are filtered by the authenticated user's company ID.
+- Tenant-aware course creation/listing and course publishing. Learners only discover published courses; all course queries are filtered by the authenticated user's company ID.
+- Subject → Topic → Lesson APIs with tenant-scoped parent checks, content validation, ordering, and media-asset ownership checks for video/file lessons.
 - Bunny Storage path validation/server-side upload helper, Bunny Stream shared-library video creation helper, Razorpay platform order helper, and AES-256-GCM utility for encrypting tenant secrets with company ID as associated data.
 - CI checks for formatting, Clippy, tests, and compilation.
 

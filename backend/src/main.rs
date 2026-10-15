@@ -6,6 +6,7 @@ mod db;
 mod error;
 mod health;
 mod integrations;
+mod learning;
 mod routes;
 mod security;
 mod state;

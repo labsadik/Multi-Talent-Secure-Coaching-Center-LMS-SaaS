@@ -37,6 +37,14 @@ pub async fn ensure_indexes(db: &Database) -> mongodb::error::Result<()> {
     )
     .await?;
 
+    create_index(
+        &assets,
+        IndexModel::builder()
+            .keys(doc! { "companyId": 1, "courseId": 1, "topicId": 1, "status": 1 })
+            .build(),
+    )
+    .await?;
+
     Ok(())
 }
 

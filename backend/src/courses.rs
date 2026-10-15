@@ -163,3 +163,44 @@ fn course_response(document: Document) -> AppResult<CourseResponse> {
         created_at_ms,
     })
 }
+
+
+pub async fn publish_course(
+    State(state): State<AppState>,
+    Path(course_id): Path<String>,
+    auth: AuthUser,
+) -> AppResult<Json<CourseResponse>> {
+    if !auth.can_manage_content() {
+        return Err(AppError::Forbidden);
+    }
+    let course_id = ObjectId::parse_str(&course_id)
+        .map_err(|_| AppError::BadRequest("invalid course ID"))?;
+    let now = DateTime::now();
+    let result = state
+        .db
+        .collection::<Document>("courses")
+        .update_one(
+            doc! {
+                "_id": course_id.clone(),
+                "companyId": auth.company_id.clone(),
+                "deletedAt": { "$exists": false },
+            },
+            doc! { "$set": { "status": "published", "updatedAt": now } },
+        )
+        .await?;
+
+    if result.matched_count != 1 {
+        return Err(AppError::NotFound);
+    }
+    let document = state
+        .db
+        .collection::<Document>("courses")
+        .find_one(doc! {
+            "_id": course_id,
+            "companyId": auth.company_id.clone(),
+        })
+        .await?
+        .ok_or(AppError::NotFound)?;
+
+    Ok(Json(course_response(document)?))
+}
