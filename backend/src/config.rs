@@ -31,6 +31,10 @@ pub struct Settings {
     pub bunny_stream_api_key: Option<String>,
     pub razorpay_key_id: Option<String>,
     pub razorpay_key_secret: Option<String>,
+    pub razorpay_webhook_secret: Option<String>,
+    pub plan_starter_monthly_price_paise: i64,
+    pub plan_pro_monthly_price_paise: i64,
+    pub plan_business_monthly_price_paise: i64,
 }
 
 fn required(key: &'static str) -> Result<String> {
@@ -224,12 +228,40 @@ impl Settings {
             razorpay_key_id.is_some() == razorpay_key_secret.is_some(),
             "RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET must be configured together"
         );
+        let razorpay_webhook_secret = optional("RAZORPAY_WEBHOOK_SECRET");
+        ensure!(
+            razorpay_webhook_secret.is_none() || razorpay_key_id.is_some(),
+            "RAZORPAY_WEBHOOK_SECRET requires platform Razorpay credentials"
+        );
+
+        let plan_starter_monthly_price_paise =
+            parse_or("PLAN_STARTER_MONTHLY_PRICE_PAISE", 99_900_i64)?;
+        let plan_pro_monthly_price_paise =
+            parse_or("PLAN_PRO_MONTHLY_PRICE_PAISE", 199_900_i64)?;
+        let plan_business_monthly_price_paise =
+            parse_or("PLAN_BUSINESS_MONTHLY_PRICE_PAISE", 499_900_i64)?;
+        for (name, amount) in [
+            ("PLAN_STARTER_MONTHLY_PRICE_PAISE", plan_starter_monthly_price_paise),
+            ("PLAN_PRO_MONTHLY_PRICE_PAISE", plan_pro_monthly_price_paise),
+            ("PLAN_BUSINESS_MONTHLY_PRICE_PAISE", plan_business_monthly_price_paise),
+        ] {
+            ensure!(
+                (1..=100_000_000).contains(&amount),
+                "{name} must be between 1 and 100000000 paise"
+            );
+        }
 
         if app_env == "production" {
             ensure!(
                 cors_allowed_origins.iter().all(|origin| origin.starts_with("https://")),
                 "production CORS origins must use HTTPS"
             );
+            if razorpay_key_id.is_some() {
+                ensure!(
+                    razorpay_webhook_secret.is_some(),
+                    "RAZORPAY_WEBHOOK_SECRET is required in production when platform Razorpay is enabled"
+                );
+            }
         }
 
         Ok(Self {
@@ -260,6 +292,10 @@ impl Settings {
             bunny_stream_api_key,
             razorpay_key_id,
             razorpay_key_secret,
+            razorpay_webhook_secret,
+            plan_starter_monthly_price_paise,
+            plan_pro_monthly_price_paise,
+            plan_business_monthly_price_paise,
         })
     }
 }

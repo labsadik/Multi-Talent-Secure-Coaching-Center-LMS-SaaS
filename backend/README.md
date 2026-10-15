@@ -13,6 +13,7 @@ This is the Rust backend foundation for the multi-tenant Newage LMS SaaS. The Nu
 - Tenant owner/admin company-user listing, creation, role updates and disable/enable with privilege-escalation checks.
 - Learner course enrollment listing, lesson progress updates, and per-course completion statistics backed by unique MongoDB indexes.
 - Tenant Razorpay credentials stored only as AES-256-GCM encrypted values, course order creation using server-side course prices, checkout signature + captured-payment verification, idempotent enrollment writes, and a signature-verified `payment.captured` webhook.
+- Platform SaaS subscription order creation uses plan prices from `.env`, separate platform credentials, and a signature-verified platform webhook to activate the company plan.
 - Bunny Storage topic-scoped image/PDF uploads, Bunny Stream per-course collection provisioning and time-limited TUS upload tickets, video encoding status sync, Razorpay platform order helper, and AES-256-GCM utility for tenant secrets.
 - CI checks for formatting, Clippy, tests, and compilation.
 
@@ -36,6 +37,8 @@ Required: APP_ENV, MONGODB_URI, MONGODB_DATABASE, JWT_SECRET, JWT_ISSUER, JWT_AU
 Optional upload/playback settings: `MAX_ASSET_UPLOAD_BYTES`, `BUNNY_TUS_ENDPOINT`, `BUNNY_UPLOAD_SIGNATURE_TTL_SECONDS`, `BUNNY_STREAM_TOKEN_AUTH_KEY`, and `BUNNY_PLAYBACK_TOKEN_TTL_SECONDS`. Enable Embed View Token Authentication in the Bunny Stream library security settings before using signed playback. Direct browser video uploads use a short-lived TUS signature; the Bunny API key never leaves the server. Storage file uploads are streamed through the API and bounded by both request and asset size caps.
 
 A company’s Razorpay key ID, API secret, and webhook secret are submitted through its authenticated settings endpoint. Only encrypted API/webhook secrets are stored in MongoDB; `APP_ENCRYPTION_KEY_BASE64` is required to enable this and must be managed as a durable secret with a rotation/backup plan.
+
+Platform billing reads `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`, and the three `PLAN_*_MONTHLY_PRICE_PAISE` values from `.env`. These are platform subscription credentials/prices; per-company course-payment credentials continue to be encrypted independently.
 
 Optional provider configuration must be supplied in matching pairs:
 - Bunny Storage: BUNNY_STORAGE_ZONE + BUNNY_STORAGE_API_KEY

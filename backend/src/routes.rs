@@ -5,7 +5,7 @@ use axum::{
 };
 use serde_json::{json, Value};
 
-use crate::{auth, company_users, courses, health, learning, media, payments, progress, state::AppState};
+use crate::{auth, company_users, courses, health, learning, media, payments, platform_billing, progress, state::AppState};
 
 pub fn router(state: AppState) -> Router {
     Router::new()
@@ -82,12 +82,20 @@ pub fn router(state: AppState) -> Router {
             post(payments::create_course_order),
         )
         .route(
+            "/api/v1/company/subscription/orders",
+            post(platform_billing::create_subscription_order),
+        )
+        .route(
             "/api/v1/payments/verify",
             post(payments::verify_course_payment),
         )
         .route(
             "/api/v1/webhooks/razorpay",
             post(payments::razorpay_webhook),
+        )
+        .route(
+            "/api/v1/webhooks/platform-razorpay",
+            post(platform_billing::razorpay_webhook),
         )
         .fallback(not_found)
         .with_state(state)

@@ -17,6 +17,8 @@ pub async fn ensure_indexes(db: &Database) -> mongodb::error::Result<()> {
     let payments: Collection<mongodb::bson::Document> = db.collection("payments");
     let enrollments: Collection<mongodb::bson::Document> = db.collection("enrollments");
     let lesson_progress: Collection<mongodb::bson::Document> = db.collection("lesson_progress");
+    let subscription_orders: Collection<mongodb::bson::Document> = db.collection("subscription_orders");
+    let subscription_payments: Collection<mongodb::bson::Document> = db.collection("subscription_payments");
 
     create_index(
         &companies,
@@ -120,6 +122,32 @@ pub async fn ensure_indexes(db: &Database) -> mongodb::error::Result<()> {
         &lesson_progress,
         IndexModel::builder()
             .keys(doc! { "companyId": 1, "courseId": 1, "learnerId": 1, "status": 1 })
+            .build(),
+    )
+    .await?;
+
+    create_index(
+        &subscription_orders,
+        IndexModel::builder()
+            .keys(doc! { "razorpayOrderId": 1 })
+            .options(IndexOptions::builder().unique(true).build())
+            .build(),
+    )
+    .await?;
+
+    create_index(
+        &subscription_orders,
+        IndexModel::builder()
+            .keys(doc! { "companyId": 1, "status": 1, "createdAt": -1 })
+            .build(),
+    )
+    .await?;
+
+    create_index(
+        &subscription_payments,
+        IndexModel::builder()
+            .keys(doc! { "razorpayPaymentId": 1 })
+            .options(IndexOptions::builder().unique(true).build())
             .build(),
     )
     .await?;
