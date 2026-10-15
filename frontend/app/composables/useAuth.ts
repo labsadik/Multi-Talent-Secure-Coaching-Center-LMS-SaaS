@@ -222,9 +222,6 @@ export function useAuth() {
   async function verifyCoursePayment(input: { razorpayOrderId: string; razorpayPaymentId: string; razorpaySignature: string }) {
     return backend<Record<string, unknown>>('payments/verify', { method: 'POST', body: input })
   }
-  async function createSubscriptionOrder(planCode: 'starter' | 'pro' | 'business') {
-    return backend<Record<string, unknown>>('company/subscription/orders', { method: 'POST', body: { planCode } })
-  }
   async function logout() {
     try { await api('/api/session/logout', { method: 'POST' }) }
     finally { clearSession() }
@@ -245,6 +242,6 @@ export function useAuth() {
     getChapterPartLessons, createChapterPartLesson, getTopicAssets,
     getCompanyUsers, createCompanyUser, updateCompanyUser, getMyCourses, updateLessonProgress, getCourseProgress, getPlayback,
     uploadAsset, createVideoTicket, archiveAsset, permanentlyDeleteAsset, refreshAssetStatus, getRazorpaySettings, configureRazorpay, createCourseOrder,
-    verifyCoursePayment, createSubscriptionOrder, logout, clearSession,
+    verifyCoursePayment, logout, clearSession,
   }
 }
