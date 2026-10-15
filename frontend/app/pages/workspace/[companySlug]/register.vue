@@ -48,9 +48,10 @@ async function submit() {
       email: email.value.trim(),
       password: password.value,
     })
+    const dashboardPath = '/workspace/' + encodeURIComponent(companySlug.value) + '/dashboard/learn'
     await navigateTo(courseId.value
-      ? { path: '/dashboard/learn', query: { checkoutCourse: courseId.value } }
-      : '/dashboard/learn')
+      ? { path: dashboardPath, query: { checkoutCourse: courseId.value } }
+      : dashboardPath)
   } catch (error) {
     errorMessage.value = apiErrorMessage(error, 'Learner account could not be created. Check your details or contact the company.')
   } finally {

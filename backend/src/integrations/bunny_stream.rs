@@ -20,6 +20,7 @@ pub struct BunnyUploadTicket {
 pub struct BunnyVideoStatus {
     pub status: i64,
     pub length_seconds: i64,
+    pub encode_progress: i64,
 }
 
 #[derive(Clone)]
@@ -128,6 +129,7 @@ impl BunnyStream {
         Ok(BunnyVideoStatus {
             status: response.get("status").and_then(serde_json::Value::as_i64).ok_or(AppError::Internal)?,
             length_seconds: response.get("length").and_then(serde_json::Value::as_i64).unwrap_or(0),
+            encode_progress: response.get("encodeProgress").and_then(serde_json::Value::as_i64).unwrap_or(0).clamp(0, 100),
         })
     }
 

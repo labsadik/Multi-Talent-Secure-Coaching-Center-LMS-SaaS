@@ -2,7 +2,7 @@
 import type { Course, LearnerCourse } from '~/types/api'
 import { apiErrorMessage } from '~/utils/api-error'
 
-definePageMeta({ middleware: 'auth' })
+definePageMeta({ middleware: ['auth', 'company-dashboard'], alias: ['/workspace/:companySlug/dashboard/learn'] })
 
 type OrderResponse = {
   enrolled?: boolean
@@ -20,8 +20,12 @@ declare global {
   }
 }
 
-const { currentUser, getCourses, getMyCourses, getCourseProgress, createCourseOrder, verifyCoursePayment } = useAuth()
+const { currentUser, currentCompany, getCourses, getMyCourses, getCourseProgress, createCourseOrder, verifyCoursePayment } = useAuth()
 const route = useRoute()
+function workspacePath(suffix = '') {
+  const slug = String(route.params.companySlug || currentCompany.value?.slug || '').trim()
+  return slug ? '/workspace/' + encodeURIComponent(slug) + '/dashboard' + suffix : '/dashboard' + suffix
+}
 const courses = ref<Course[]>([])
 const enrolled = ref<LearnerCourse[]>([])
 const progressByCourse = ref<Record<string, number>>({})
@@ -121,7 +125,7 @@ async function enroll(course: Course) {
 
 onMounted(async () => {
   if (!isLearner.value) {
-    await navigateTo('/dashboard')
+    await navigateTo(currentCompany.value?.slug ? '/workspace/' + encodeURIComponent(currentCompany.value.slug) + '/dashboard' : '/dashboard')
     return
   }
   await load()
@@ -146,8 +150,8 @@ async function continueRequestedCheckout() {
   <div class="min-h-screen bg-canvas">
     <header class="border-b border-line bg-white">
       <div class="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-4 sm:px-6">
-        <NuxtLink to="/" class="inline-flex items-center gap-3 font-semibold"><span class="grid h-10 w-10 place-items-center rounded-2xl bg-brand text-lg font-black text-white">N</span>newage<span class="text-brand">.</span></NuxtLink>
-        <div class="flex items-center gap-3"><span class="hidden text-sm text-muted sm:block">{{ currentUser?.name }}</span><NuxtLink to="/dashboard" class="rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-muted hover:bg-canvas">Workspace</NuxtLink></div>
+        <NuxtLink :to="currentCompany?.slug ? '/p/' + currentCompany.slug : '/'" class="inline-flex min-w-0 items-center gap-3 font-semibold"><span class="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-brand text-lg font-black text-white">{{ (currentCompany?.name || 'N').slice(0, 1).toUpperCase() }}</span><span class="min-w-0"><span class="block truncate">{{ currentCompany?.name || 'newage' }}</span><span class="block text-[10px] font-medium uppercase tracking-wider text-muted">Learning dashboard</span></span></NuxtLink>
+        <div class="flex items-center gap-3"><span class="hidden text-sm text-muted sm:block">{{ currentUser?.name }}</span><NuxtLink :to="currentCompany?.slug ? '/workspace/' + encodeURIComponent(currentCompany.slug) + '/dashboard' : '/dashboard'" class="rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-muted hover:bg-canvas">Workspace</NuxtLink></div>
       </div>
     </header>
     <main class="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10">
@@ -171,7 +175,7 @@ async function continueRequestedCheckout() {
             <div class="flex items-start justify-between gap-3"><div class="grid h-11 w-11 place-items-center rounded-xl bg-brand-soft text-brand"><svg viewBox="0 0 24 24" fill="none" class="h-6 w-6" aria-hidden="true"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4H20v15H6.5A2.5 2.5 0 0 0 4 21V6.5ZM4 18.5A2.5 2.5 0 0 1 6.5 16H20" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg></div><span class="rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-semibold text-emerald-800">Enrolled</span></div>
             <h3 class="mt-5 text-base font-semibold">{{ item.title }}</h3><p class="mt-2 line-clamp-2 min-h-10 text-sm leading-6 text-muted">{{ item.description || 'Ready when you are.' }}</p>
             <div class="mt-5"><div class="mb-2 flex justify-between text-xs"><span class="font-medium text-muted">Course progress</span><span class="font-semibold">{{ progressByCourse[item.courseId] || 0 }}%</span></div><div class="h-2 overflow-hidden rounded-full bg-canvas"><div class="h-full rounded-full bg-brand transition-all" :style="{ width: (progressByCourse[item.courseId] || 0) + '%' }" /></div></div>
-            <NuxtLink :to="'/dashboard/courses/' + item.courseId" class="mt-5 inline-flex w-full justify-center rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white hover:bg-brand-dark">Open course</NuxtLink>
+            <NuxtLink :to="workspacePath('/courses/' + item.courseId)" class="mt-5 inline-flex w-full justify-center rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white hover:bg-brand-dark">Open course</NuxtLink>
           </article>
         </div>
         <div v-else-if="!loading" class="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-10 text-center"><p class="font-semibold">Your learning list is empty</p><p class="mt-2 text-sm text-muted">Enrol in a course below to get started.</p></div>

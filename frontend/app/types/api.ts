@@ -113,6 +113,8 @@ export interface TopicAsset {
   chapterId?: string | null
   chapterPartId?: string | null
   lessonId?: string | null
+  bunnyStatus?: number | null
+  encodeProgress?: number | null
 }
 export interface CompanyUser {
   id: string

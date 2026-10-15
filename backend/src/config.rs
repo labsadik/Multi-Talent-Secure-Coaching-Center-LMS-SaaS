@@ -29,6 +29,8 @@ pub struct Settings {
     pub bunny_cdn_hostname: Option<String>,
     pub bunny_stream_library_id: Option<u64>,
     pub bunny_stream_api_key: Option<String>,
+    /// Read-only API key for verifying signed Bunny Stream webhooks.
+    pub bunny_stream_webhook_signing_key: Option<String>,
     pub razorpay_key_id: Option<String>,
     pub razorpay_key_secret: Option<String>,
     pub razorpay_webhook_secret: Option<String>,
@@ -217,6 +219,7 @@ impl Settings {
             "BUNNY_UPLOAD_SIGNATURE_TTL_SECONDS must be between 3600 and 86400"
         );
         let bunny_stream_token_auth_key = optional("BUNNY_STREAM_TOKEN_AUTH_KEY");
+        let bunny_stream_webhook_signing_key = optional("BUNNY_STREAM_WEBHOOK_SIGNING_KEY");
         let bunny_playback_token_ttl_seconds =
             parse_or("BUNNY_PLAYBACK_TOKEN_TTL_SECONDS", 3_600_u64)?;
         ensure!(
@@ -227,6 +230,10 @@ impl Settings {
             ensure!(
                 bunny_stream_token_auth_key.is_some(),
                 "BUNNY_STREAM_TOKEN_AUTH_KEY is required in production when Bunny Stream is enabled"
+            );
+            ensure!(
+                bunny_stream_webhook_signing_key.is_some(),
+                "BUNNY_STREAM_WEBHOOK_SIGNING_KEY is required in production when Bunny Stream is enabled"
             );
         }
 
@@ -323,6 +330,7 @@ impl Settings {
             bunny_cdn_hostname,
             bunny_stream_library_id,
             bunny_stream_api_key,
+            bunny_stream_webhook_signing_key,
             razorpay_key_id,
             razorpay_key_secret,
             razorpay_webhook_secret,

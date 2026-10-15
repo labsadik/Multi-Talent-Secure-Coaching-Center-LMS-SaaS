@@ -2,7 +2,7 @@
 import type { Course, CreateCourseInput } from '~/types/api'
 import { apiErrorMessage } from '~/utils/api-error'
 
-definePageMeta({ middleware: 'auth' })
+definePageMeta({ middleware: ['auth', 'company-dashboard'], alias: ['/workspace/:companySlug/dashboard'] })
 
 const {
   currentUser,
@@ -17,7 +17,13 @@ const {
   clearSession,
 } = useAuth()
 
+const route = useRoute()
 const courses = ref<Course[]>([])
+
+function workspacePath(suffix = '') {
+  const slug = String(route.params.companySlug || currentCompany.value?.slug || '').trim()
+  return slug ? '/workspace/' + encodeURIComponent(slug) + '/dashboard' + suffix : '/dashboard' + suffix
+}
 const loading = ref(true)
 const busy = ref(false)
 const createOpen = ref(false)
@@ -195,11 +201,11 @@ onMounted(() => {
         </div>
       </div>
       <nav class="mx-auto flex max-w-7xl items-center gap-1 overflow-x-auto px-4 pb-3 sm:px-6 lg:px-8" aria-label="Workspace sections">
-        <NuxtLink to="/dashboard" class="shrink-0 rounded-lg bg-brand-soft px-3 py-2 text-xs font-semibold text-brand">Overview</NuxtLink>
-        <NuxtLink v-if="currentUser?.role === 'learner'" to="/dashboard/learn" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-muted hover:bg-canvas hover:text-ink">My learning</NuxtLink>
-        <NuxtLink v-if="['owner','admin'].includes(currentUser?.role || '')" to="/dashboard/users" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-muted hover:bg-canvas hover:text-ink">People</NuxtLink>
-        <NuxtLink v-if="['owner','admin'].includes(currentUser?.role || '')" to="/dashboard/site" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-muted hover:bg-canvas hover:text-ink">Public site & theme</NuxtLink>
-        <NuxtLink v-if="['owner','admin'].includes(currentUser?.role || '')" to="/dashboard/settings" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-muted hover:bg-canvas hover:text-ink">Payments & plans</NuxtLink>
+        <NuxtLink  :to="workspacePath()" class="shrink-0 rounded-lg bg-brand-soft px-3 py-2 text-xs font-semibold text-brand">Overview</NuxtLink>
+        <NuxtLink v-if="currentUser?.role === 'learner'"  :to="workspacePath('/learn')" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-muted hover:bg-canvas hover:text-ink">My learning</NuxtLink>
+        <NuxtLink v-if="['owner','admin'].includes(currentUser?.role || '')" :to="workspacePath('/users')" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-muted hover:bg-canvas hover:text-ink">People</NuxtLink>
+        <NuxtLink v-if="['owner','admin'].includes(currentUser?.role || '')" :to="workspacePath('/site')" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-muted hover:bg-canvas hover:text-ink">Public site & theme</NuxtLink>
+        <NuxtLink v-if="['owner','admin'].includes(currentUser?.role || '')" :to="workspacePath('/settings')" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-muted hover:bg-canvas hover:text-ink">Payments & plans</NuxtLink>
         <NuxtLink v-if="['owner','admin'].includes(currentUser?.role || '') && currentCompany?.slug" :to="'/p/' + currentCompany.slug" target="_blank" class="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-brand hover:bg-brand-soft">View public page ↗</NuxtLink>
       </nav>
     </header>
@@ -243,7 +249,7 @@ onMounted(() => {
       </section>
 
       <section v-if="canManageContent" class="mt-7 grid gap-4 md:grid-cols-2">
-        <NuxtLink to="/dashboard/site" class="group flex items-center gap-4 rounded-2xl border border-line bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-lg"><span class="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-brand-soft text-xl text-brand">✦</span><span class="min-w-0 flex-1"><strong class="block text-sm font-semibold">Public company page & theme</strong><span class="mt-1 block text-xs leading-5 text-muted">Set your branding, colours, logo, banner and company story.</span></span><span class="text-lg text-muted transition group-hover:translate-x-1">→</span></NuxtLink>
+        <NuxtLink :to="workspacePath('/site')" class="group flex items-center gap-4 rounded-2xl border border-line bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-lg"><span class="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-brand-soft text-xl text-brand">✦</span><span class="min-w-0 flex-1"><strong class="block text-sm font-semibold">Public company page & theme</strong><span class="mt-1 block text-xs leading-5 text-muted">Set your branding, colours, logo, banner and company story.</span></span><span class="text-lg text-muted transition group-hover:translate-x-1">→</span></NuxtLink>
         <NuxtLink v-if="currentCompany?.slug" :to="'/p/' + currentCompany.slug" target="_blank" class="group flex items-center gap-4 rounded-2xl border border-line bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-lg"><span class="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-emerald-100 text-xl text-emerald-700">↗</span><span class="min-w-0 flex-1"><strong class="block text-sm font-semibold">View public course catalogue</strong><span class="mt-1 block text-xs leading-5 text-muted">Open your company’s public learning page to share with learners.</span></span><span class="text-lg text-muted transition group-hover:translate-x-1">→</span></NuxtLink>
       </section>
 
@@ -302,7 +308,7 @@ onMounted(() => {
               <span class="absolute bottom-4 right-4 rounded-full px-2.5 py-1 text-[10px] font-semibold capitalize" :class="course.status === 'published' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'">{{ course.status }}</span>
             </div>
             <div class="flex flex-1 flex-col p-5">
-              <NuxtLink :to="'/dashboard/courses/' + course.id" class="line-clamp-2 text-base font-semibold leading-6 transition hover:text-brand">{{ course.title }}</NuxtLink>
+              <NuxtLink :to="workspacePath('/courses/' + course.id)" class="line-clamp-2 text-base font-semibold leading-6 transition hover:text-brand">{{ course.title }}</NuxtLink>
               <p class="mt-2 line-clamp-2 min-h-10 text-sm leading-5 text-muted">{{ course.description || 'A new learning experience, ready to take shape.' }}</p>
               <div class="mt-5 flex flex-col gap-3 border-t border-line pt-4">
                 <div class="flex items-center justify-between gap-3">
@@ -310,7 +316,7 @@ onMounted(() => {
                   <span class="rounded-full px-2.5 py-1 text-[10px] font-semibold capitalize" :class="course.status === 'published' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'">{{ course.status }}</span>
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
-                  <NuxtLink :to="'/dashboard/courses/' + course.id" class="rounded-lg bg-ink px-3 py-2 text-xs font-semibold text-white transition hover:bg-ink/80">Manage content</NuxtLink>
+                  <NuxtLink :to="workspacePath('/courses/' + course.id)" class="rounded-lg bg-ink px-3 py-2 text-xs font-semibold text-white transition hover:bg-ink/80">Manage content</NuxtLink>
                   <button v-if="canManageContent" type="button" class="rounded-lg border border-line px-3 py-2 text-xs font-semibold text-muted hover:border-brand hover:text-brand" @click="editCourse(course)">Edit details</button>
                   <button v-if="canManageContent && course.status !== 'published'" type="button" class="rounded-lg bg-brand-soft px-3 py-2 text-xs font-semibold text-brand transition hover:bg-brand hover:text-white" @click="publish(course)">Publish</button>
                   <button v-if="canManageContent" type="button" class="ml-auto rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-50" @click="archiveCourse(course)">Archive</button>

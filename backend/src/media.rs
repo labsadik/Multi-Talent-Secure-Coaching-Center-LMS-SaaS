@@ -7,6 +7,7 @@ use axum::{
 };
 use mongodb::bson::{doc, oid::ObjectId, DateTime, Document};
 use futures_util::TryStreamExt;
+use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};
 use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
@@ -53,6 +54,7 @@ pub struct VideoStatusResponse {
     pub status: String,
     pub bunny_status: i64,
     pub duration_seconds: i64,
+    pub encode_progress: i64,
 }
 
 async fn topic_context(
@@ -555,6 +557,7 @@ pub async fn refresh_video_status(
                     "status": status,
                     "bunnyStatus": video.status,
                     "durationSeconds": video.length_seconds,
+                    "encodeProgress": video.encode_progress,
                     "updatedAt": DateTime::now(),
                 }
             },
@@ -566,7 +569,92 @@ pub async fn refresh_video_status(
         status: status.to_owned(),
         bunny_status: video.status,
         duration_seconds: video.length_seconds,
+        encode_progress: video.encode_progress,
     }))
+}
+
+
+/// Receives signed Bunny Stream video-state callbacks. Bunny signs the exact raw
+/// request body with the Video Library's read-only API key (HMAC-SHA256).
+pub async fn bunny_stream_webhook(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> AppResult<Json<Value>> {
+    let signing_key = state.settings.bunny_stream_webhook_signing_key.as_deref()
+        .filter(|value| !value.is_empty())
+        .ok_or(AppError::ServiceUnavailable("Bunny Stream webhook signing key"))?;
+
+    if headers.get("x-bunnystream-signature-version").and_then(|v| v.to_str().ok()) != Some("v1")
+        || headers.get("x-bunnystream-signature-algorithm").and_then(|v| v.to_str().ok()) != Some("hmac-sha256")
+    {
+        return Err(AppError::Unauthorized);
+    }
+    let signature = headers.get("x-bunnystream-signature")
+        .and_then(|value| value.to_str().ok())
+        .ok_or(AppError::Unauthorized)?;
+    let signature_bytes = hex::decode(signature).map_err(|_| AppError::Unauthorized)?;
+    let mut mac = Hmac::<Sha256>::new_from_slice(signing_key.as_bytes())
+        .map_err(|_| AppError::Internal)?;
+    mac.update(&body);
+    mac.verify_slice(&signature_bytes).map_err(|_| AppError::Unauthorized)?;
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "PascalCase")]
+    struct BunnyStreamWebhook {
+        video_library_id: i64,
+        video_guid: String,
+        status: i64,
+    }
+
+    let event: BunnyStreamWebhook = serde_json::from_slice(&body)
+        .map_err(|_| AppError::BadRequest("invalid Bunny Stream webhook payload"))?;
+    let expected_library_id = state.settings.bunny_stream_library_id
+        .and_then(|id| i64::try_from(id).ok())
+        .ok_or(AppError::ServiceUnavailable("Bunny Stream"))?;
+    if event.video_library_id != expected_library_id {
+        return Err(AppError::Unauthorized);
+    }
+    if event.video_guid.is_empty()
+        || event.video_guid.len() > 128
+        || !event.video_guid.chars().all(|ch| ch.is_ascii_alphanumeric() || "-_".contains(ch))
+        || !(0..=10).contains(&event.status)
+    {
+        return Err(AppError::BadRequest("invalid Bunny Stream video state"));
+    }
+
+    let assets = state.db.collection::<Document>("assets");
+    let status = match event.status {
+        0 | 1 | 2 | 7 => Some("processing"),
+        3 | 4 => Some("ready"),
+        5 | 8 => Some("failed"),
+        6 => Some("uploading"),
+        // Caption/metadata events must not change an already tracked playback state.
+        9 | 10 => None,
+        _ => None,
+    };
+    let mut fields = doc! {
+        "bunnyStatus": event.status,
+        "updatedAt": DateTime::now(),
+    };
+    if let Some(status) = status {
+        fields.insert("status", status);
+    }
+    let result = assets.update_one(
+        doc! {
+            "provider": "bunny_stream",
+            "providerVideoId": &event.video_guid,
+            "bunnyLibraryId": expected_library_id,
+            "deletedAt": { "$exists": false },
+        },
+        doc! { "$set": fields },
+    ).await?;
+
+    Ok(Json(json!({
+        "received": true,
+        "matched": result.matched_count > 0,
+        "status": status.unwrap_or("metadata_updated"),
+    })))
 }
 
 #[cfg(test)]
@@ -855,6 +943,8 @@ pub struct TopicAssetResponse {
     pub chapter_id: Option<String>,
     pub chapter_part_id: Option<String>,
     pub lesson_id: Option<String>,
+    pub bunny_status: Option<i64>,
+    pub encode_progress: Option<i64>,
 }
 
 pub async fn list_topic_assets(
@@ -911,6 +1001,8 @@ pub async fn list_topic_assets(
             chapter_id: document.get_object_id("chapterId").ok().map(|id| id.to_hex()),
             chapter_part_id: document.get_object_id("chapterPartId").ok().map(|id| id.to_hex()),
             lesson_id: document.get_object_id("lessonId").ok().map(|id| id.to_hex()),
+            bunny_status: document.get_i64("bunnyStatus").ok(),
+            encode_progress: document.get_i64("encodeProgress").ok(),
         })
     }).collect();
     Ok(Json(assets))

@@ -30,12 +30,15 @@ export default defineNuxtRouteMiddleware(async (to) => {
   if (currentCompany.value?.slug?.trim().toLowerCase() !== requestedSlug) return
 
   const courseId = typeof to.query.courseId === 'string' ? to.query.courseId.trim() : ''
-  if (currentUser.value.role === 'learner') {
+  const base = '/workspace/' + encodeURIComponent(requestedSlug) + '/dashboard'
+  if (to.path === '/workspace/' + requestedSlug + '/register') {
+    // An authenticated learner does not need a second account.
     return navigateTo(courseId
-      ? { path: '/dashboard/learn', query: { checkoutCourse: courseId } }
-      : '/dashboard/learn')
+      ? { path: base + '/learn', query: { checkoutCourse: courseId } }
+      : (currentUser.value.role === 'learner' ? base + '/learn' : base))
   }
-
-  const requested = typeof to.query.redirect === 'string' ? to.query.redirect : '/dashboard'
-  return navigateTo(requested.startsWith('/') && !requested.startsWith('//') ? requested : '/dashboard')
+  const requested = typeof to.query.redirect === 'string' ? to.query.redirect : ''
+  if (requested.startsWith(base) && !requested.startsWith('//')) return navigateTo(requested)
+  if (courseId) return navigateTo({ path: base + '/learn', query: { checkoutCourse: courseId } })
+  return navigateTo(currentUser.value.role === 'learner' ? base + '/learn' : base)
 })
