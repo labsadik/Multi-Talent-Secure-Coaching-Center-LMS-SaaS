@@ -1,11 +1,5 @@
 export default defineNuxtRouteMiddleware(async (to) => {
-  const rawSlug = to.params.companySlug
-  if (typeof rawSlug !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(rawSlug)) {
-    return navigateTo('/login')
-  }
-  const slug = rawSlug.toLowerCase()
   const { currentUser, currentCompany, loadCurrentUser, clearSession } = useAuth()
-
   if (!currentUser.value || !currentCompany.value) {
     try {
       await loadCurrentUser()
@@ -14,8 +8,10 @@ export default defineNuxtRouteMiddleware(async (to) => {
       const status = failure?.statusCode ?? failure?.status
       if (status === 401 || status === 403) {
         clearSession()
+        const match = to.path.match(/^\/workspace\/([a-z0-9]+(?:-[a-z0-9]+)*)\/dashboard(.*)$/)
+        const slug = match?.[1]
         return navigateTo({
-          path: '/workspace/' + encodeURIComponent(slug) + '/login',
+          path: slug ? '/workspace/' + encodeURIComponent(slug) + '/login' : '/login',
           query: { redirect: to.fullPath },
         })
       }
@@ -26,13 +22,20 @@ export default defineNuxtRouteMiddleware(async (to) => {
     }
   }
 
-  if (!currentUser.value || !currentCompany.value) {
+  if (!currentUser.value || !currentCompany.value) return navigateTo('/login')
+  const rawSlug = to.params.companySlug
+  // Legacy dashboard URLs are redirected to the authenticated tenant's slug URL.
+  if (typeof rawSlug !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(rawSlug)) {
+    const slug = currentCompany.value.slug.trim().toLowerCase()
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) return navigateTo('/login')
+    const suffix = to.path.replace(/^\/dashboard/, '')
     return navigateTo({
-      path: '/workspace/' + encodeURIComponent(slug) + '/login',
-      query: { redirect: to.fullPath },
+      path: '/workspace/' + encodeURIComponent(slug) + '/dashboard' + suffix,
+      query: to.query,
     })
   }
 
+  const slug = rawSlug.toLowerCase()
   if (currentCompany.value.slug.trim().toLowerCase() !== slug) {
     return navigateTo({
       path: '/workspace/' + encodeURIComponent(slug) + '/login',
@@ -40,17 +43,14 @@ export default defineNuxtRouteMiddleware(async (to) => {
     })
   }
 
-  if (to.path === '/workspace/' + slug + '/dashboard') {
-    if (currentUser.value.role === 'learner') {
-      const courseId = typeof to.query.checkoutCourse === 'string' ? to.query.checkoutCourse : ''
-      return navigateTo(courseId
-        ? { path: '/workspace/' + encodeURIComponent(slug) + '/dashboard/learn', query: { checkoutCourse: courseId } }
-        : '/workspace/' + encodeURIComponent(slug) + '/dashboard/learn')
-    }
+  if (to.path === '/workspace/' + slug + '/dashboard' && currentUser.value.role === 'learner') {
+    const courseId = typeof to.query.checkoutCourse === 'string' ? to.query.checkoutCourse : ''
+    return navigateTo(courseId
+      ? { path: '/workspace/' + encodeURIComponent(slug) + '/dashboard/learn', query: { checkoutCourse: courseId } }
+      : '/workspace/' + encodeURIComponent(slug) + '/dashboard/learn')
   }
 
-  if (to.path === '/workspace/' + slug + '/dashboard/learn'
-      && currentUser.value.role !== 'learner') {
+  if (to.path === '/workspace/' + slug + '/dashboard/learn' && currentUser.value.role !== 'learner') {
     return navigateTo('/workspace/' + encodeURIComponent(slug) + '/dashboard')
   }
 })
